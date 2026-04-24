@@ -29,10 +29,7 @@ BUTTON_TEXT = "📍 Bana en yakın nöbetçi eczaneyi bul"
 def main_keyboard() -> ReplyKeyboardMarkup:
     button = KeyboardButton(text=BUTTON_TEXT, request_location=True)
     return ReplyKeyboardMarkup(
-        [[button]],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-        is_persistent=True,
+        [[button]], resize_keyboard=True, one_time_keyboard=False
     )
 
 
