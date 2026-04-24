@@ -3,7 +3,14 @@ import logging
 import math
 import os
 
-from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+    WebAppInfo,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -24,6 +31,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "BURAYA_TOKEN_YAPISTIR")
 
 BUTTON_TEXT = "📍 Bana en yakın nöbetçi eczaneyi bul"
+WEB_APP_URL = os.environ.get(
+    "WEB_APP_URL", "https://nobetci-eczane-web.onrender.com/"
+)
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -33,6 +43,20 @@ def main_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         one_time_keyboard=False,
         is_persistent=True,
+    )
+
+
+def inline_kb() -> InlineKeyboardMarkup:
+    """Her mesaja iliştirilecek, kaybolmaz."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    text=BUTTON_TEXT,
+                    web_app=WebAppInfo(url=WEB_APP_URL),
+                )
+            ]
+        ]
     )
 
 
@@ -57,15 +81,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         f"Merhaba {user.first_name}! 👋\n\n"
         "Ben Kahramanmaraş Nöbetçi Eczane botuyum.\n\n"
-        f"📱 *Telefondan:* Aşağıdaki *{BUTTON_TEXT}* butonuna bas, "
-        "konumunu paylaşınca sana en yakın nöbetçi eczaneyi bulayım.\n\n"
-        "💻 *Bilgisayardan:* Konum butonu masaüstü Telegram'da çalışmaz. "
-        "Bunun yerine:\n"
-        "• Mesaj kutusundaki 📎 *ataç* simgesine bas → *Konum* → gönder\n"
-        "• Veya /liste yaz, tüm nöbetçi eczaneleri haritalı göstereyim."
+        f"Aşağıdaki *{BUTTON_TEXT}* butonuna bas, "
+        "konumunu paylaş, sana en yakın nöbetçi eczaneyi adres "
+        "ve telefonuyla göstereyim.\n\n"
+        "📋 Tüm nöbetçi eczaneleri görmek için /liste yazabilirsin."
     )
     await update.message.reply_text(
-        text, reply_markup=main_keyboard(), parse_mode=ParseMode.MARKDOWN
+        text, reply_markup=inline_kb(), parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -76,14 +98,14 @@ async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Eczane verisi çekilemedi")
         await update.message.reply_text(
             "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
-            reply_markup=main_keyboard(),
+            reply_markup=inline_kb(),
         )
         return
 
     if not pharmacies:
         await update.message.reply_text(
             "Bugün için nöbetçi eczane bulunamadı.",
-            reply_markup=main_keyboard(),
+            reply_markup=inline_kb(),
         )
         return
 
@@ -106,7 +128,7 @@ async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "\n".join(satirlar),
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
-        reply_markup=main_keyboard(),
+        reply_markup=inline_kb(),
     )
 
 
@@ -124,7 +146,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.exception("Eczane verisi çekilemedi")
         await update.message.reply_text(
             "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
-            reply_markup=main_keyboard(),
+            reply_markup=inline_kb(),
         )
         return
 
@@ -132,7 +154,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not geo:
         await update.message.reply_text(
             "Bugün için koordinatlı nöbetçi eczane bulunamadı.",
-            reply_markup=main_keyboard(),
+            reply_markup=inline_kb(),
         )
         return
 
@@ -163,13 +185,13 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         mesaj,
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
-        reply_markup=main_keyboard(),
+        reply_markup=inline_kb(),
     )
 
     await update.message.reply_location(
         latitude=nearest["lat"],
         longitude=nearest["lng"],
-        reply_markup=main_keyboard(),
+        reply_markup=inline_kb(),
     )
 
     if len(geo) > 1:
@@ -188,26 +210,17 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             diger,
             parse_mode=ParseMode.MARKDOWN,
             disable_web_page_preview=True,
-            reply_markup=main_keyboard(),
+            reply_markup=inline_kb(),
         )
 
 
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = update.message.text or ""
-    if text.strip() == BUTTON_TEXT:
-        msg = (
-            "💻 Masaüstü Telegram konum butonunu desteklemiyor.\n\n"
-            "• 📱 Telefondan aynı butona basınca çalışır.\n"
-            "• Bilgisayardaysan 📎 *ataç* → *Konum* ile konumunu gönder.\n"
-            "• Veya /liste yaz, tüm nöbetçi eczaneleri göstereyim."
-        )
-    else:
-        msg = (
-            f"Konum paylaşmak için *{BUTTON_TEXT}* butonuna bas "
-            "(telefondan) ya da /liste yaz."
-        )
+    msg = (
+        f"Aşağıdaki *{BUTTON_TEXT}* butonuna basınca nöbetçi eczane "
+        "bulma sayfası açılır. Tüm listeyi görmek için /liste yaz."
+    )
     await update.message.reply_text(
-        msg, reply_markup=main_keyboard(), parse_mode=ParseMode.MARKDOWN
+        msg, reply_markup=inline_kb(), parse_mode=ParseMode.MARKDOWN
     )
 
 
