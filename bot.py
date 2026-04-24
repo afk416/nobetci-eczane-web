@@ -169,19 +169,6 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "_Yol tarifi için aşağıdaki konum mesajına dokun._"
     )
 
-    await update.message.reply_text(
-        mesaj,
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True,
-        reply_markup=main_keyboard(),
-    )
-
-    await update.message.reply_location(
-        latitude=nearest["lat"],
-        longitude=nearest["lng"],
-        reply_markup=main_keyboard(),
-    )
-
     if len(geo) > 1:
         diger = "*Diğer nöbetçi eczaneler (mesafeye göre):*\n\n"
         for p in geo[1:]:
@@ -200,6 +187,19 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             disable_web_page_preview=True,
             reply_markup=main_keyboard(),
         )
+
+    await update.message.reply_text(
+        mesaj,
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+        reply_markup=main_keyboard(),
+    )
+
+    await update.message.reply_location(
+        latitude=nearest["lat"],
+        longitude=nearest["lng"],
+        reply_markup=main_keyboard(),
+    )
 
 
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
