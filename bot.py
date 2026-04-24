@@ -165,28 +165,27 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"📍 Adres: {nearest.get('adres') or '-'}\n"
         f"📞 Telefon: {tel}\n"
         f"🗺️ [Google Maps'te Aç]({nearest['harita']})\n\n"
-        "_Telefon numarasına dokununca arama ekranı açılır._\n"
         "_Yol tarifi için aşağıdaki konum mesajına dokun._"
     )
 
-    if len(geo) > 1:
-        diger = "*Diğer nöbetçi eczaneler (mesafeye göre):*\n\n"
-        for p in geo[1:]:
-            ad2 = p["ad"]
-            if p.get("ilce"):
-                ad2 = f"{ad2} ({p['ilce']})"
-            tel2 = p.get("tel") or "-"
-            diger += (
-                f"*{ad2}*\n"
-                f"📏 {format_distance(p['_km'])}   🗺️ [harita]({p['harita']})\n"
-                f"📞 {tel2}\n\n"
-            )
-        await update.message.reply_text(
-            diger,
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
-            reply_markup=main_keyboard(),
+    liste_metni = "*Nöbetçi Eczaneler (mesafeye göre):*\n\n"
+    for i, p in enumerate(geo):
+        ad_l = p["ad"]
+        if p.get("ilce"):
+            ad_l = f"{ad_l} ({p['ilce']})"
+        tel_l = p.get("tel") or "-"
+        en_yakin = " (🟢 EN YAKIN)" if i == 0 else ""
+        liste_metni += (
+            f"*{ad_l}*{en_yakin}\n"
+            f"📏 {format_distance(p['_km'])}   🗺️ [harita]({p['harita']})\n"
+            f"📞 {tel_l}\n\n"
         )
+    await update.message.reply_text(
+        liste_metni,
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+        reply_markup=main_keyboard(),
+    )
 
     await update.message.reply_text(
         mesaj,
