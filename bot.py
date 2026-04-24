@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "BURAYA_TOKEN_YAPISTIR")
 
 BUTTON_TEXT = "📍 Bana en yakın nöbetçi eczaneyi bul"
+WEB_APP_URL = os.environ.get(
+    "WEB_APP_URL", "https://nobetci-eczane-web.onrender.com/"
+)
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
@@ -54,13 +57,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         f"Merhaba {user.first_name}! 👋\n\n"
         "Ben Kahramanmaraş Nöbetçi Eczane botuyum.\n\n"
-        f"Aşağıdaki *{BUTTON_TEXT}* butonuna bas, "
-        "konumunu paylaş, sana en yakın nöbetçi eczaneyi adres "
-        "ve telefonuyla göstereyim.\n\n"
-        "📋 Tüm nöbetçi eczaneleri görmek için /liste yazabilirsin."
+        f"📱 *Telefondan:* Aşağıdaki *{BUTTON_TEXT}* butonuna bas, "
+        "konumunu paylaş, en yakın eczaneyi göstereyim.\n\n"
+        f"💻 *Tarayıcıda açmak istersen:* [buraya tıkla]({WEB_APP_URL})\n\n"
+        "📋 Tüm nöbetçi eczaneleri görmek için /liste yaz."
     )
     await update.message.reply_text(
-        text, reply_markup=main_keyboard(), parse_mode=ParseMode.MARKDOWN
+        text,
+        reply_markup=main_keyboard(),
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
     )
 
 
