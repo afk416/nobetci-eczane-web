@@ -10,7 +10,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -80,6 +80,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING
+    )
     try:
         pharmacies = fetch_pharmacies()
     except Exception:
@@ -127,6 +130,10 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     user_lat, user_lng = loc.latitude, loc.longitude
     logger.info("Konum: %s, %s", user_lat, user_lng)
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING
+    )
 
     try:
         pharmacies = fetch_pharmacies()
@@ -240,6 +247,12 @@ def main() -> None:
     app.add_handler(CommandHandler("liste", liste))
     app.add_handler(MessageHandler(filters.LOCATION, handle_location))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback))
+
+    try:
+        fetch_pharmacies()
+        logger.info("Eczane cache'i ısıtıldı.")
+    except Exception:
+        logger.warning("Cache ön-ısıtma başarısız, ilk istek daha yavaş olabilir.")
 
     logger.info("Bot başlıyor...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

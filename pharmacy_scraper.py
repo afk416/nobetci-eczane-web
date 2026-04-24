@@ -15,7 +15,7 @@ HEADERS = {
 _COORD_RE = re.compile(r"q=(-?\d+\.\d+),\s*(-?\d+\.\d+)")
 
 _cache = {"ts": 0.0, "data": []}
-_CACHE_TTL = 300  # 5 dk
+_CACHE_TTL = 1800  # 30 dk
 
 
 def _parse_row(row):
@@ -63,7 +63,7 @@ def _parse_row(row):
 
 
 def fetch_pharmacies(force_refresh: bool = False):
-    """Nöbetçi eczane listesini döndürür. 5 dk cache'li."""
+    """Nöbetçi eczane listesini döndürür. 30 dk cache'li."""
     now = time.time()
     if not force_refresh and _cache["data"] and (now - _cache["ts"] < _CACHE_TTL):
         return _cache["data"]
