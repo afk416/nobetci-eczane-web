@@ -1,8 +1,13 @@
 """Kahramanmaraş Belediyesi nöbetçi eczane sayfasından veri çeker."""
 import re
 import time
+from datetime import datetime, timedelta, timezone
+
 import requests
 from bs4 import BeautifulSoup
+
+TURKEY_TZ = timezone(timedelta(hours=3))
+DAILY_REFRESH_HOUR = 9  # Eczaneler Türkiye saatiyle 09:00'da değişiyor
 
 URL = "https://kahramanmaras.bel.tr/nobetci-eczaneler"
 HEADERS = {
@@ -62,10 +67,27 @@ def _parse_row(row):
     }
 
 
+def _last_refresh_boundary_ts() -> float:
+    """En son geçilen 09:00 (TR) anının unix zamanı."""
+    now_tr = datetime.now(TURKEY_TZ)
+    boundary = now_tr.replace(
+        hour=DAILY_REFRESH_HOUR, minute=0, second=0, microsecond=0
+    )
+    if now_tr < boundary:
+        boundary -= timedelta(days=1)
+    return boundary.timestamp()
+
+
 def fetch_pharmacies(force_refresh: bool = False):
-    """Nöbetçi eczane listesini döndürür. 30 dk cache'li."""
+    """Nöbetçi eczane listesini döndürür. 30 dk cache'li, 09:00'da otomatik yenilenir."""
     now = time.time()
-    if not force_refresh and _cache["data"] and (now - _cache["ts"] < _CACHE_TTL):
+    boundary = _last_refresh_boundary_ts()
+    cache_fresh = (
+        _cache["data"]
+        and (now - _cache["ts"] < _CACHE_TTL)
+        and _cache["ts"] >= boundary
+    )
+    if not force_refresh and cache_fresh:
         return _cache["data"]
 
     r = requests.get(URL, headers=HEADERS, timeout=20)
