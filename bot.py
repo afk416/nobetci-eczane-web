@@ -38,7 +38,10 @@ WEB_APP_URL = os.environ.get(
 def main_keyboard() -> ReplyKeyboardMarkup:
     button = KeyboardButton(text=BUTTON_TEXT, request_location=True)
     return ReplyKeyboardMarkup(
-        [[button]], resize_keyboard=True, one_time_keyboard=False
+        [[button]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True,
     )
 
 
