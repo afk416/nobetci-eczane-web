@@ -157,11 +157,19 @@ const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
-  if (tg.BackButton) {
-    tg.BackButton.show();
-    tg.BackButton.onClick(() => tg.close());
-  }
+  if (tg.BackButton && tg.BackButton.hide) tg.BackButton.hide();
+  if (tg.disableClosingConfirmation) tg.disableClosingConfirmation();
 }
+
+// Android sistem geri tuşu: boş geçmişte Telegram kapatır; tarayıcı geçmişinde
+// takılı kalmasın diye sahte bir state ekleyip popstate'te web app'i kapatıyoruz.
+try {
+  history.pushState({ webapp: true }, "");
+  window.addEventListener("popstate", () => {
+    if (tg && tg.close) tg.close();
+    else window.history.back();
+  });
+} catch (e) {}
 
 const $ = (id) => document.getElementById(id);
 const findBtn = $("findBtn");
