@@ -3,7 +3,13 @@ import logging
 import math
 import os
 
-from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -197,16 +203,21 @@ async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
     if text.strip() == BUTTON_TEXT:
         msg = (
-            "💻 Masaüstü Telegram konum butonunu desteklemiyor.\n\n"
-            "• 📱 Telefondan aynı butona basınca çalışır.\n"
-            "• Bilgisayardaysan 📎 *ataç* → *Konum* ile konumunu gönder.\n"
-            "• Veya /liste yaz, tüm nöbetçi eczaneleri göstereyim."
+            "💻 Masaüstü Telegram konum paylaşımını desteklemiyor.\n\n"
+            "Aşağıdaki butondan siteyi açıp oradan konumunu paylaşabilirsin:"
         )
-    else:
-        msg = (
-            f"Konum paylaşmak için aşağıdaki *{BUTTON_TEXT}* butonuna bas "
-            "(telefondan) ya da /liste yaz."
+        inline = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text="🌐 Web sayfasını aç", url=WEB_APP_URL)]]
         )
+        await update.message.reply_text(
+            msg, reply_markup=inline, parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    msg = (
+        f"Konum paylaşmak için aşağıdaki *{BUTTON_TEXT}* butonuna bas "
+        "(telefondan) ya da /liste yaz."
+    )
     await update.message.reply_text(
         msg, reply_markup=main_keyboard(), parse_mode=ParseMode.MARKDOWN
     )
