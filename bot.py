@@ -29,7 +29,10 @@ BUTTON_TEXT = "📍 Bana en yakın nöbetçi eczaneyi bul"
 def main_keyboard() -> ReplyKeyboardMarkup:
     button = KeyboardButton(text=BUTTON_TEXT, request_location=True)
     return ReplyKeyboardMarkup(
-        [[button]], resize_keyboard=True, one_time_keyboard=False
+        [[button]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True,
     )
 
 
@@ -72,12 +75,16 @@ async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         logger.exception("Eczane verisi çekilemedi")
         await update.message.reply_text(
-            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene."
+            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
+            reply_markup=main_keyboard(),
         )
         return
 
     if not pharmacies:
-        await update.message.reply_text("Bugün için nöbetçi eczane bulunamadı.")
+        await update.message.reply_text(
+            "Bugün için nöbetçi eczane bulunamadı.",
+            reply_markup=main_keyboard(),
+        )
         return
 
     satirlar = ["🏥 *Bugünkü Nöbetçi Eczaneler*\n"]
@@ -116,14 +123,16 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.exception("Eczane verisi çekilemedi")
         await update.message.reply_text(
-            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene."
+            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
+            reply_markup=main_keyboard(),
         )
         return
 
     geo = [p for p in pharmacies if p.get("lat") and p.get("lng")]
     if not geo:
         await update.message.reply_text(
-            "Bugün için koordinatlı nöbetçi eczane bulunamadı."
+            "Bugün için koordinatlı nöbetçi eczane bulunamadı.",
+            reply_markup=main_keyboard(),
         )
         return
 
@@ -158,7 +167,9 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
     await update.message.reply_location(
-        latitude=nearest["lat"], longitude=nearest["lng"]
+        latitude=nearest["lat"],
+        longitude=nearest["lng"],
+        reply_markup=main_keyboard(),
     )
 
     if len(geo) > 1:
@@ -174,7 +185,10 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 f"📞 {tel2}\n\n"
             )
         await update.message.reply_text(
-            diger, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True
+            diger,
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+            reply_markup=main_keyboard(),
         )
 
 
