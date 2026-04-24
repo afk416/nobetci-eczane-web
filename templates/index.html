@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kahramanmaraş Nöbetçi Eczane</title>
+<style>
+  :root {
+    --bg: #f4f7fa;
+    --card: #ffffff;
+    --accent: #246b8f;
+    --accent-dark: #1a536e;
+    --wa: #25d366;
+    --wa-dark: #128c7e;
+    --text: #1f2d3a;
+    --muted: #677889;
+    --border: #e2e8ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .app {
+    width: 100%;
+    max-width: 540px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  header h1 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    color: var(--accent);
+  }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    margin-bottom: 16px;
+  }
+  button {
+    width: 100%;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-primary:disabled { background: #9eb5c3; cursor: not-allowed; }
+  .btn-wa { background: var(--wa); color: #fff; margin-top: 10px; }
+  .btn-wa:hover { background: var(--wa-dark); }
+  .status {
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--muted);
+    text-align: center;
+    min-height: 20px;
+  }
+  .status.error { color: #c23a3a; }
+  .result h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    color: var(--accent);
+  }
+  .result .distance {
+    display: inline-block;
+    background: #e7f1f7;
+    color: var(--accent-dark);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 14.5px;
+    line-height: 1.45;
+  }
+  .row .ico { width: 20px; flex-shrink: 0; text-align: center; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .others h3 {
+    font-size: 15px;
+    margin: 0 0 10px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .others ul { list-style: none; padding: 0; margin: 0; }
+  .others li {
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .others li:first-child { border-top: none; }
+  .others .name { font-weight: 600; }
+  .others .meta { color: var(--muted); font-size: 13px; }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 14px;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🏥 Kahramanmaraş Nöbetçi Eczane</h1>
+    <p>Konumunu paylaş, sana en yakın nöbetçi eczaneyi bulalım.</p>
+  </header>
+
+  <div class="card">
+    <button id="findBtn" class="btn-primary">📍 Bana en yakın nöbetçi eczaneyi bul</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div id="resultCard" class="card result hidden">
+    <h2 id="pName"></h2>
+    <span class="distance" id="pDistance"></span>
+    <div class="row"><span class="ico">📍</span><span id="pAddress"></span></div>
+    <div class="row"><span class="ico">📞</span><a id="pPhone" href="#"></a></div>
+    <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Google Maps'te aç</a></div>
+  </div>
+
+  <div id="othersCard" class="card others hidden">
+    <h3>Diğer nöbetçi eczaneler</h3>
+    <ul id="othersList"></ul>
+  </div>
+
+  <footer>Veri kaynağı: kahramanmaras.bel.tr</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const findBtn = $("findBtn");
+const statusEl = $("status");
+const resultCard = $("resultCard");
+const othersCard = $("othersCard");
+
+function setStatus(msg, isError = false) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("error", isError);
+}
+
+function toRad(d) { return d * Math.PI / 180; }
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function formatDist(km) {
+  if (km < 1) return Math.round(km * 1000) + " m";
+  return km.toFixed(2) + " km";
+}
+
+async function getPharmacies() {
+  const r = await fetch("/api/pharmacies");
+  if (!r.ok) throw new Error("Eczane listesi alınamadı (HTTP " + r.status + ")");
+  return await r.json();
+}
+
+function getLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Tarayıcın konum özelliğini desteklemiyor."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => {
+        const messages = {
+          1: "Konum izni reddedildi. Tarayıcı ayarlarından izin vermen gerekiyor.",
+          2: "Konum alınamadı. GPS/internet bağlantını kontrol et.",
+          3: "Konum alma zaman aşımına uğradı."
+        };
+        reject(new Error(messages[err.code] || "Konum hatası: " + err.message));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+}
+
+function renderResult(nearest, others) {
+  $("pName").textContent = nearest.ad + (nearest.ilce ? " (" + nearest.ilce + ")" : "");
+  $("pDistance").textContent = "📏 " + formatDist(nearest._km);
+  $("pAddress").textContent = nearest.adres || "-";
+
+  const phoneLink = $("pPhone");
+  if (nearest.tel) {
+    phoneLink.textContent = nearest.tel;
+    phoneLink.href = "tel:" + nearest.tel;
+  } else {
+    phoneLink.textContent = "-";
+    phoneLink.removeAttribute("href");
+  }
+
+  $("pMap").href = nearest.harita || "#";
+  resultCard.classList.remove("hidden");
+
+  const othersList = $("othersList");
+  othersList.innerHTML = "";
+  if (others.length) {
+    others.forEach(p => {
+      const li = document.createElement("li");
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = p.ad + (p.ilce ? " (" + p.ilce + ")" : "");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const mapA = document.createElement("a");
+      mapA.href = p.harita;
+      mapA.target = "_blank";
+      mapA.rel = "noopener";
+      mapA.textContent = "harita";
+      meta.textContent = formatDist(p._km) + " • " + (p.adres || "-") + " • ";
+      meta.appendChild(mapA);
+      li.appendChild(name);
+      li.appendChild(meta);
+      othersList.appendChild(li);
+    });
+    othersCard.classList.remove("hidden");
+  } else {
+    othersCard.classList.add("hidden");
+  }
+}
+
+findBtn.addEventListener("click", async () => {
+  findBtn.disabled = true;
+  resultCard.classList.add("hidden");
+  othersCard.classList.add("hidden");
+  setStatus("Konum alınıyor...");
+
+  try {
+    const loc = await getLocation();
+    setStatus("Eczaneler yükleniyor...");
+
+    const pharmacies = await getPharmacies();
+    if (pharmacies.error) throw new Error(pharmacies.error);
+
+    const geo = pharmacies.filter(p => p.lat && p.lng);
+    if (!geo.length) {
+      setStatus("Bugün için koordinatlı nöbetçi eczane bulunamadı.", true);
+      return;
+    }
+
+    geo.forEach(p => {
+      p._km = haversineKm(loc.lat, loc.lng, p.lat, p.lng);
+    });
+    geo.sort((a, b) => a._km - b._km);
+
+    setStatus("");
+    renderResult(geo[0], geo.slice(1));
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    findBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
