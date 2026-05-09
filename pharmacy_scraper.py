@@ -9,6 +9,29 @@ from bs4 import BeautifulSoup
 TURKEY_TZ = timezone(timedelta(hours=3))
 DAILY_REFRESH_HOUR = 9  # Eczaneler Türkiye saatiyle 09:00'da değişiyor
 
+# Sadece bu ilçelerdeki eczaneleri gösteriyoruz (Kahramanmaraş şehir merkezi)
+TARGET_DISTRICTS = ("onikisubat", "dulkadiroglu", "merkez")
+
+
+def _normalize(s: str) -> str:
+    """Türkçe karakter ve büyük/küçük harf fark etmeden karşılaştırma için."""
+    return (
+        s.lower()
+        .replace("ı", "i")
+        .replace("ş", "s")
+        .replace("ğ", "g")
+        .replace("ü", "u")
+        .replace("ö", "o")
+        .replace("ç", "c")
+    )
+
+
+def _section_matches_target(h1_text: str) -> bool:
+    norm = _normalize(h1_text)
+    if "nobetci" in norm and "eczane" in norm and len(norm) < 25:
+        return False  # genel sayfa başlığı, atla
+    return any(d in norm for d in TARGET_DISTRICTS)
+
 URL = "https://kahramanmaras.bel.tr/nobetci-eczaneler"
 HEADERS = {
     "User-Agent": (
@@ -95,24 +118,23 @@ def fetch_pharmacies(force_refresh: bool = False):
     r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "lxml")
 
-    # Belediye sitesi yapisi degisti: artik her eczane icin ayri wrapper var.
-    # Tum eczane-row'lari direkt sayfadan topluyoruz.
-    rows = soup.find_all(class_="eczane-row")
-    if not rows:
-        return _cache["data"] or []
-
+    # Sayfa ilcelere gore gruplu (h1 + sonraki .eczaneler-wrapper).
+    # Sadece TARGET_DISTRICTS'taki bolumleri aliyoruz (Onikişubat + Dulkadiroğlu).
     seen = set()
     data = []
-    for row in rows:
-        p = _parse_row(row)
-        if not p["ad"]:
+    for wrapper in soup.find_all(class_="eczaneler-wrapper"):
+        h1 = wrapper.find_previous("h1")
+        if not h1 or not _section_matches_target(h1.get_text(strip=True)):
             continue
-        # Aynı eczane birden çok kez listelenmiş olabilir (mobil/desktop wrapper)
-        key = (p["ad"], p.get("lat"), p.get("lng"))
-        if key in seen:
-            continue
-        seen.add(key)
-        data.append(p)
+        for row in wrapper.find_all(class_="eczane-row"):
+            p = _parse_row(row)
+            if not p["ad"]:
+                continue
+            key = (p["ad"], p.get("lat"), p.get("lng"))
+            if key in seen:
+                continue
+            seen.add(key)
+            data.append(p)
 
     _cache["ts"] = now
     _cache["data"] = data
