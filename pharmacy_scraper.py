@@ -95,13 +95,24 @@ def fetch_pharmacies(force_refresh: bool = False):
     r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "lxml")
 
-    wrapper = soup.find(class_="eczaneler-wrapper")
-    if not wrapper:
+    # Belediye sitesi yapisi degisti: artik her eczane icin ayri wrapper var.
+    # Tum eczane-row'lari direkt sayfadan topluyoruz.
+    rows = soup.find_all(class_="eczane-row")
+    if not rows:
         return _cache["data"] or []
 
-    rows = wrapper.find_all(class_="eczane-row")
-    data = [_parse_row(row) for row in rows]
-    data = [d for d in data if d["ad"]]
+    seen = set()
+    data = []
+    for row in rows:
+        p = _parse_row(row)
+        if not p["ad"]:
+            continue
+        # Aynı eczane birden çok kez listelenmiş olabilir (mobil/desktop wrapper)
+        key = (p["ad"], p.get("lat"), p.get("lng"))
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append(p)
 
     _cache["ts"] = now
     _cache["data"] = data
