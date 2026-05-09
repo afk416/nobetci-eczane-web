@@ -180,8 +180,8 @@ function formatDist(km) {
   return km.toFixed(2) + " km";
 }
 
-async function getPharmacies() {
-  const r = await fetch("/api/pharmacies");
+async function getPharmaciesForLocation(lat, lng) {
+  const r = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
   if (!r.ok) throw new Error("Eczane listesi alınamadı (HTTP " + r.status + ")");
   return await r.json();
 }
@@ -259,12 +259,16 @@ findBtn.addEventListener("click", async () => {
 
   try {
     const loc = await getLocation();
-    setStatus("Eczaneler yükleniyor...");
+    setStatus("Bölgenizdeki nöbetçi eczaneler aranıyor...");
 
-    const pharmacies = await getPharmacies();
-    if (pharmacies.error) throw new Error(pharmacies.error);
+    const resp = await getPharmaciesForLocation(loc.lat, loc.lng);
+    if (resp.error) throw new Error(resp.error);
 
-    const geo = pharmacies.filter(p => p.lat && p.lng);
+    const pharmacies = resp.pharmacies || resp; // backward-compat
+    const fallback = resp.fallback === true;
+    const districtName = resp.user_district_display;
+
+    const geo = (pharmacies || []).filter(p => p.lat && p.lng);
     if (!geo.length) {
       setStatus("Bugün için koordinatlı nöbetçi eczane bulunamadı.", true);
       return;
@@ -275,7 +279,17 @@ findBtn.addEventListener("click", async () => {
     });
     geo.sort((a, b) => a._km - b._km);
 
-    setStatus("");
+    if (fallback) {
+      const msg = districtName
+        ? `⚠️ ${districtName} bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum.`
+        : "⚠️ Bulunduğun ilçe tespit edilemedi. Tüm il listesini gösteriyorum.";
+      setStatus(msg, true);
+    } else if (districtName) {
+      setStatus(`📍 ${districtName} bölgesi`);
+    } else {
+      setStatus("");
+    }
+
     renderResult(geo[0], geo.slice(1));
   } catch (e) {
     setStatus(e.message, true);

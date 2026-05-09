@@ -19,7 +19,26 @@ from telegram.ext import (
     filters,
 )
 
-from pharmacy_scraper import fetch_pharmacies
+from pharmacy_scraper import (
+    DISTRICT_NORMALIZE,
+    fetch_pharmacies,
+    get_district_for_location,
+)
+
+# İlçe anahtarından kullanıcıya gösterilecek isim
+DISTRICT_DISPLAY = {
+    "merkez": "Merkez (Onikişubat + Dulkadiroğlu)",
+    "afsin": "Afşin",
+    "andirin": "Andırın",
+    "caglayancerit": "Çağlayancerit",
+    "ekinozu": "Ekinözü",
+    "elbistan": "Elbistan",
+    "goksun": "Göksun",
+    "narli": "Narlı",
+    "nurhak": "Nurhak",
+    "pazarcik": "Pazarcık",
+    "turkoglu": "Türkoğlu",
+}
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -145,19 +164,47 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    geo = [p for p in pharmacies if p.get("lat") and p.get("lng")]
-    if not geo:
+    all_geo = [p for p in pharmacies if p.get("lat") and p.get("lng")]
+    if not all_geo:
         await update.message.reply_text(
             "Bugün için koordinatlı nöbetçi eczane bulunamadı.",
             reply_markup=main_keyboard(),
         )
         return
 
+    # Kullanıcının ilçesini bul, o ilçenin eczanelerini filtrele
+    user_district = get_district_for_location(user_lat, user_lng)
+    logger.info("Kullanıcı ilçesi: %s", user_district)
+
+    geo = [p for p in all_geo if p.get("ilce_key") == user_district] if user_district else []
+    fallback_used = False
+    if not geo:
+        # İlçede nöbetçi yoksa veya ilçe tespit edilemediyse hepsini göster
+        geo = all_geo
+        fallback_used = True
+
     for p in geo:
         p["_km"] = haversine_km(user_lat, user_lng, p["lat"], p["lng"])
 
     geo.sort(key=lambda x: x["_km"])
     nearest = geo[0]
+
+    if fallback_used:
+        if user_district:
+            note = (
+                f"_⚠️ {DISTRICT_DISPLAY.get(user_district, user_district)} "
+                "bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum._\n\n"
+            )
+        else:
+            note = (
+                "_⚠️ Bulunduğun ilçe tespit edilemedi. "
+                "Tüm il listesini gösteriyorum._\n\n"
+            )
+        await update.message.reply_text(
+            note,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_keyboard(),
+        )
 
     ad = nearest["ad"]
     if nearest.get("ilce"):

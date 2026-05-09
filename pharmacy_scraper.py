@@ -9,8 +9,22 @@ from bs4 import BeautifulSoup
 TURKEY_TZ = timezone(timedelta(hours=3))
 DAILY_REFRESH_HOUR = 9  # Eczaneler Türkiye saatiyle 09:00'da değişiyor
 
-# Sadece bu ilçelerdeki eczaneleri gösteriyoruz (Kahramanmaraş şehir merkezi)
-TARGET_DISTRICTS = ("onikisubat", "dulkadiroglu", "merkez")
+# Onikişubat + Dulkadiroğlu birleşik "merkez" sayılır; diğer ilçeler kendi anahtarı
+DISTRICT_NORMALIZE = {
+    "merkez": "merkez",
+    "onikisubat": "merkez",
+    "dulkadiroglu": "merkez",
+    "afsin": "afsin",
+    "andirin": "andirin",
+    "caglayancerit": "caglayancerit",
+    "ekinozu": "ekinozu",
+    "elbistan": "elbistan",
+    "goksun": "goksun",
+    "narli": "narli",
+    "nurhak": "nurhak",
+    "pazarcik": "pazarcik",
+    "turkoglu": "turkoglu",
+}
 
 
 def _normalize(s: str) -> str:
@@ -26,11 +40,40 @@ def _normalize(s: str) -> str:
     )
 
 
-def _section_matches_target(h1_text: str) -> bool:
-    norm = _normalize(h1_text)
+def district_key_from_text(text: str):
+    """'Onikişubat', 'Merkez(...)', 'Nurhak' gibi metinden ilçe anahtarını döner."""
+    norm = _normalize(text or "")
     if "nobetci" in norm and "eczane" in norm and len(norm) < 25:
-        return False  # genel sayfa başlığı, atla
-    return any(d in norm for d in TARGET_DISTRICTS)
+        return None  # genel sayfa başlığı
+    for keyword, key in DISTRICT_NORMALIZE.items():
+        if keyword in norm:
+            return key
+    return None
+
+
+def get_district_for_location(lat: float, lng: float):
+    """Verilen koordinatın hangi ilçede olduğunu döner (örn. 'merkez', 'nurhak')."""
+    try:
+        url = (
+            "https://nominatim.openstreetmap.org/reverse"
+            f"?lat={lat}&lon={lng}&format=jsonv2&addressdetails=1&accept-language=tr"
+        )
+        r = requests.get(
+            url,
+            headers={"User-Agent": "nobetci-eczane-bot/1.0 (afk416@gmail.com)"},
+            timeout=8,
+        )
+        r.raise_for_status()
+        addr = r.json().get("address", {})
+        for field in ("town", "city_district", "district", "county", "municipality", "village"):
+            val = addr.get(field)
+            if val:
+                key = district_key_from_text(val)
+                if key:
+                    return key
+        return None
+    except Exception:
+        return None
 
 URL = "https://kahramanmaras.bel.tr/nobetci-eczaneler"
 HEADERS = {
@@ -118,18 +161,20 @@ def fetch_pharmacies(force_refresh: bool = False):
     r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "lxml")
 
-    # Sayfa ilcelere gore gruplu (h1 + sonraki .eczaneler-wrapper).
-    # Sadece TARGET_DISTRICTS'taki bolumleri aliyoruz (Onikişubat + Dulkadiroğlu).
+    # Sayfa ilçelere göre gruplu (h1 + sonraki .eczaneler-wrapper).
+    # Tüm ilçeleri çekip her eczaneye 'ilce_key' ekliyoruz (filtreyi bot/web yapacak).
     seen = set()
     data = []
     for wrapper in soup.find_all(class_="eczaneler-wrapper"):
         h1 = wrapper.find_previous("h1")
-        if not h1 or not _section_matches_target(h1.get_text(strip=True)):
-            continue
+        ilce_key = district_key_from_text(h1.get_text(strip=True)) if h1 else None
+        if not ilce_key:
+            continue  # genel başlık veya tanımsız ilçe — atla
         for row in wrapper.find_all(class_="eczane-row"):
             p = _parse_row(row)
             if not p["ad"]:
                 continue
+            p["ilce_key"] = ilce_key
             key = (p["ad"], p.get("lat"), p.get("lng"))
             if key in seen:
                 continue
