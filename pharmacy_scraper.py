@@ -1,132 +1,142 @@
-"""Kahramanmaraş Belediyesi nöbetçi eczane sayfasından veri çeker."""
-import re
+"""Türkiye geneli nöbetçi eczane verisini CollectAPI üzerinden çeker."""
+import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 TURKEY_TZ = timezone(timedelta(hours=3))
-DAILY_REFRESH_HOUR = 9  # Eczaneler Türkiye saatiyle 09:00'da değişiyor
+DAILY_REFRESH_HOUR = 9  # Eczaneler TR saatiyle 09:00'da değişiyor
 
-# Onikişubat + Dulkadiroğlu birleşik "merkez" sayılır; diğer ilçeler kendi anahtarı
+# CollectAPI ayarları (token önce env, sonra lokal dosya)
+COLLECTAPI_URL = "https://api.collectapi.com/health/dutyPharmacy"
+COLLECTAPI_TOKEN = os.environ.get("COLLECTAPI_TOKEN", "").strip()
+if not COLLECTAPI_TOKEN:
+    try:
+        # Lokal geliştirme için: proje kökündeki collectapi_token.txt
+        for candidate in (
+            Path(__file__).parent / "collectapi_token.txt",
+            Path(__file__).parent.parent / "collectapi_token.txt",
+        ):
+            if candidate.exists():
+                COLLECTAPI_TOKEN = candidate.read_text(encoding="utf-8").strip()
+                break
+    except Exception:
+        pass
+
+# Cache: il_key -> {"ts": float, "data": list}
+_cache: dict = {}
+_CACHE_TTL = 1800  # 30 dk
+
+# Geriye dönük uyumluluk: bot.py bu sabiti import ediyor
 DISTRICT_NORMALIZE = {
     "merkez": "merkez",
     "onikisubat": "merkez",
     "dulkadiroglu": "merkez",
-    "afsin": "afsin",
-    "andirin": "andirin",
-    "caglayancerit": "caglayancerit",
-    "ekinozu": "ekinozu",
-    "elbistan": "elbistan",
-    "goksun": "goksun",
-    "narli": "narli",
-    "nurhak": "nurhak",
-    "pazarcik": "pazarcik",
-    "turkoglu": "turkoglu",
 }
 
 
-def _normalize(s: str) -> str:
-    """Türkçe karakter ve büyük/küçük harf fark etmeden karşılaştırma için."""
-    return (
-        s.lower()
-        .replace("ı", "i")
-        .replace("ş", "s")
-        .replace("ğ", "g")
-        .replace("ü", "u")
-        .replace("ö", "o")
-        .replace("ç", "c")
+# ---------------------------------------------------------------------------
+# Türkçe karakter normalize
+# ---------------------------------------------------------------------------
+
+def normalize_text(s: str) -> str:
+    """'Onikişubat' → 'onikisubat'.
+
+    Türkçe büyük 'İ' karakteri Python .lower() ile sorun çıkardığı için
+    önce Türkçe karakterleri ASCII'ye çevirip sonra lower yapıyoruz.
+    """
+    if not s:
+        return ""
+    # Önce Türkçe → ASCII (lower'dan önce, "İ" sorunu için kritik)
+    repl = (
+        ("İ", "I"), ("ı", "i"),
+        ("Ş", "S"), ("ş", "s"),
+        ("Ğ", "G"), ("ğ", "g"),
+        ("Ü", "U"), ("ü", "u"),
+        ("Ö", "O"), ("ö", "o"),
+        ("Ç", "C"), ("ç", "c"),
     )
+    for a, b in repl:
+        s = s.replace(a, b)
+    return s.lower().strip()
 
 
-def district_key_from_text(text: str):
-    """'Onikişubat', 'Merkez(...)', 'Nurhak' gibi metinden ilçe anahtarını döner."""
-    norm = _normalize(text or "")
-    if "nobetci" in norm and "eczane" in norm and len(norm) < 25:
-        return None  # genel sayfa başlığı
-    for keyword, key in DISTRICT_NORMALIZE.items():
-        if keyword in norm:
-            return key
-    return None
+def district_key(name: str) -> str:
+    """İlçe adından normalize anahtar. Onikişubat/Dulkadiroğlu → 'merkez'."""
+    norm = normalize_text(name)
+    return DISTRICT_NORMALIZE.get(norm, norm)
 
 
-def get_district_for_location(lat: float, lng: float):
-    """Verilen koordinatın hangi ilçede olduğunu döner (örn. 'merkez', 'nurhak')."""
-    try:
-        url = (
-            "https://nominatim.openstreetmap.org/reverse"
-            f"?lat={lat}&lon={lng}&format=jsonv2&addressdetails=1&accept-language=tr"
+# Geriye dönük uyumluluk: önceki kodda kullanıldı
+_normalize = normalize_text
+
+
+# ---------------------------------------------------------------------------
+# CollectAPI çağrısı
+# ---------------------------------------------------------------------------
+
+def _fetch_from_api(il: str) -> list:
+    if not COLLECTAPI_TOKEN:
+        raise RuntimeError(
+            "COLLECTAPI_TOKEN ayarlı değil (env var veya collectapi_token.txt)"
         )
-        r = requests.get(
-            url,
-            headers={"User-Agent": "nobetci-eczane-bot/1.0 (afk416@gmail.com)"},
-            timeout=8,
-        )
-        r.raise_for_status()
-        addr = r.json().get("address", {})
-        for field in ("town", "city_district", "district", "county", "municipality", "village"):
-            val = addr.get(field)
-            if val:
-                key = district_key_from_text(val)
-                if key:
-                    return key
+    headers = {
+        "Authorization": f"apikey {COLLECTAPI_TOKEN}",
+        "content-type": "application/json",
+    }
+    params = {"il": il, "ilce": ""}
+    r = requests.get(COLLECTAPI_URL, headers=headers, params=params, timeout=15)
+    r.raise_for_status()
+    body = r.json()
+    if not body.get("success"):
+        raise RuntimeError(f"CollectAPI hata: {body.get('message', 'bilinmeyen')}")
+    return body.get("result", []) or []
+
+
+def _parse_phone(raw: str) -> str | None:
+    """'0(344)511-66-46' → '+903445116646'."""
+    if not raw:
         return None
-    except Exception:
+    digits = "".join(c for c in raw if c.isdigit())
+    if not digits:
         return None
-
-URL = "https://kahramanmaras.bel.tr/nobetci-eczaneler"
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    )
-}
-
-_COORD_RE = re.compile(r"q=(-?\d+\.\d+),\s*(-?\d+\.\d+)")
-
-_cache = {"ts": 0.0, "data": []}
-_CACHE_TTL = 1800  # 30 dk
+    if digits.startswith("90") and len(digits) >= 12:
+        return "+" + digits
+    if digits.startswith("0") and len(digits) >= 11:
+        return "+9" + digits
+    if len(digits) == 10:
+        return "+90" + digits
+    return digits
 
 
-def _parse_row(row):
-    ad_el = row.find(class_="eczane-ad")
-    adres_el = row.find(class_="eczane-adres")
-
-    ad = ad_el.get_text(" ", strip=True) if ad_el else ""
-    adres = adres_el.get_text(" ", strip=True) if adres_el else ""
-
+def _transform(item: dict) -> dict:
+    """CollectAPI cevabını bizim standart formata çevir."""
+    loc = item.get("loc") or ""
     lat = lng = None
+    if "," in loc:
+        try:
+            lat_s, lng_s = loc.split(",", 1)
+            lat = float(lat_s.strip())
+            lng = float(lng_s.strip())
+        except (ValueError, AttributeError):
+            pass
+
     harita = None
-    tel = None
+    if lat is not None and lng is not None:
+        harita = f"https://www.google.com/maps?q={lat},{lng}"
 
-    map_a = row.find("a", class_="eczane-link-map")
-    if map_a and map_a.get("href"):
-        harita = map_a["href"]
-        m = _COORD_RE.search(harita)
-        if m:
-            lat = float(m.group(1))
-            lng = float(m.group(2))
-
-    for a in row.find_all("a"):
-        href = a.get("href", "")
-        if href.startswith("tel:"):
-            tel = href.replace("tel:", "").strip()
-            break
-
-    ilce = None
-    if " - " in ad:
-        parts = ad.rsplit(" - ", 1)
-        ad_temiz = parts[0].strip()
-        ilce = parts[1].strip()
-    else:
-        ad_temiz = ad
-
+    dist = (item.get("dist") or "").strip()
     return {
-        "ad": ad_temiz,
-        "ilce": ilce,
-        "adres": adres,
-        "tel": tel,
+        "ad": (item.get("name") or "").strip(),
+        "ilce": dist,
+        "ilce_key": district_key(dist),
+        "adres": (item.get("address") or "").strip(),
+        "tel": _parse_phone(item.get("phone")),
         "lat": lat,
         "lng": lng,
         "harita": harita,
@@ -134,7 +144,7 @@ def _parse_row(row):
 
 
 def _last_refresh_boundary_ts() -> float:
-    """En son geçilen 09:00 (TR) anının unix zamanı."""
+    """En son geçilen 09:00 (TR) anının unix timestamp'i."""
     now_tr = datetime.now(TURKEY_TZ)
     boundary = now_tr.replace(
         hour=DAILY_REFRESH_HOUR, minute=0, second=0, microsecond=0
@@ -144,49 +154,153 @@ def _last_refresh_boundary_ts() -> float:
     return boundary.timestamp()
 
 
-def fetch_pharmacies(force_refresh: bool = False):
-    """Nöbetçi eczane listesini döndürür. 30 dk cache'li, 09:00'da otomatik yenilenir."""
+def fetch_pharmacies(il: str = "kahramanmaras", force_refresh: bool = False) -> list:
+    """Belirtilen ildeki nöbetçi eczaneleri döndürür.
+
+    Cache: 30 dk + her gün 09:00 TR sınırında otomatik yenileme.
+    Her il için ayrı cache tutulur.
+    """
+    il_key = normalize_text(il) or "kahramanmaras"
     now = time.time()
     boundary = _last_refresh_boundary_ts()
-    cache_fresh = (
-        _cache["data"]
-        and (now - _cache["ts"] < _CACHE_TTL)
-        and _cache["ts"] >= boundary
-    )
-    if not force_refresh and cache_fresh:
-        return _cache["data"]
 
-    r = requests.get(URL, headers=HEADERS, timeout=20)
-    r.raise_for_status()
-    r.encoding = "utf-8"
-    soup = BeautifulSoup(r.text, "lxml")
+    cached = _cache.get(il_key)
+    if not force_refresh and cached:
+        cache_fresh = (
+            cached.get("data")
+            and (now - cached["ts"] < _CACHE_TTL)
+            and cached["ts"] >= boundary
+        )
+        if cache_fresh:
+            return cached["data"]
 
-    # Sayfa ilçelere göre gruplu (h1 + sonraki .eczaneler-wrapper).
-    # Tüm ilçeleri çekip her eczaneye 'ilce_key' ekliyoruz (filtreyi bot/web yapacak).
-    seen = set()
-    data = []
-    for wrapper in soup.find_all(class_="eczaneler-wrapper"):
-        h1 = wrapper.find_previous("h1")
-        ilce_key = district_key_from_text(h1.get_text(strip=True)) if h1 else None
-        if not ilce_key:
-            continue  # genel başlık veya tanımsız ilçe — atla
-        for row in wrapper.find_all(class_="eczane-row"):
-            p = _parse_row(row)
-            if not p["ad"]:
-                continue
-            p["ilce_key"] = ilce_key
-            key = (p["ad"], p.get("lat"), p.get("lng"))
-            if key in seen:
-                continue
-            seen.add(key)
-            data.append(p)
+    try:
+        raw = _fetch_from_api(il_key)
+    except Exception:
+        logger.exception("CollectAPI çağrısı başarısız (il=%s)", il_key)
+        if cached and cached.get("data"):
+            logger.warning("Eski cache verisi döndürülüyor")
+            return cached["data"]
+        raise
 
-    _cache["ts"] = now
-    _cache["data"] = data
+    data = [_transform(item) for item in raw]
+    data = [d for d in data if d["ad"]]
+    _cache[il_key] = {"ts": now, "data": data}
+    logger.info("CollectAPI: %s için %d eczane çekildi", il_key, len(data))
     return data
+
+
+# ---------------------------------------------------------------------------
+# Reverse geocode — koordinat → il + ilçe
+# ---------------------------------------------------------------------------
+
+# Türkiye'deki 81 il, normalize anahtarlar
+TURKEY_PROVINCES = {
+    "adana", "adiyaman", "afyonkarahisar", "afyon", "agri", "aksaray", "amasya",
+    "ankara", "antalya", "ardahan", "artvin", "aydin", "balikesir", "bartin",
+    "batman", "bayburt", "bilecik", "bingol", "bitlis", "bolu", "burdur", "bursa",
+    "canakkale", "cankiri", "corum", "denizli", "diyarbakir", "duzce", "edirne",
+    "elazig", "erzincan", "erzurum", "eskisehir", "gaziantep", "giresun",
+    "gumushane", "hakkari", "hatay", "igdir", "isparta", "istanbul", "izmir",
+    "kahramanmaras", "karabuk", "karaman", "kars", "kastamonu", "kayseri",
+    "kilis", "kirikkale", "kirklareli", "kirsehir", "kocaeli", "konya", "kutahya",
+    "malatya", "manisa", "mardin", "mersin", "mugla", "mus", "nevsehir", "nigde",
+    "ordu", "osmaniye", "rize", "sakarya", "samsun", "sanliurfa", "siirt", "sinop",
+    "sivas", "sirnak", "tekirdag", "tokat", "trabzon", "tunceli", "usak", "van",
+    "yalova", "yozgat", "zonguldak",
+}
+
+# Eski/alternatif isimler
+PROVINCE_ALIASES = {
+    "icel": "mersin",
+    "afyon": "afyonkarahisar",
+    "maras": "kahramanmaras",
+    "kmaras": "kahramanmaras",
+    "k.maras": "kahramanmaras",
+    "k maras": "kahramanmaras",
+    "urfa": "sanliurfa",
+    "antep": "gaziantep",
+}
+
+
+def _detect_province(addr: dict) -> str | None:
+    """Nominatim address dict'inden Türk il anahtarını bulur."""
+    candidates = []
+    for field in ("province", "state", "region", "state_district"):
+        v = addr.get(field)
+        if v:
+            candidates.append(v)
+
+    for raw in candidates:
+        norm = normalize_text(raw)
+        # 1) Doğrudan eşleşme
+        if norm in TURKEY_PROVINCES:
+            return norm
+        if norm in PROVINCE_ALIASES:
+            return PROVINCE_ALIASES[norm]
+        # 2) Kelime kelime tara ("Kahramanmaras Province" gibi)
+        for word in norm.split():
+            if word in TURKEY_PROVINCES:
+                return word
+            if word in PROVINCE_ALIASES:
+                return PROVINCE_ALIASES[word]
+    return None
+
+
+def get_location_info(lat: float, lng: float) -> dict | None:
+    """Koordinattan il + ilçe bilgisini Nominatim üzerinden döner.
+
+    Returns:
+        {"il": "kahramanmaras", "ilce_key": "merkez", "ilce_display": "Onikişubat"}
+        veya None
+    """
+    try:
+        url = (
+            "https://nominatim.openstreetmap.org/reverse"
+            f"?lat={lat}&lon={lng}&format=jsonv2&addressdetails=1&accept-language=tr"
+        )
+        r = requests.get(
+            url,
+            headers={"User-Agent": "nobetcim-bot/1.0 (afk416@gmail.com)"},
+            timeout=8,
+        )
+        r.raise_for_status()
+        addr = r.json().get("address", {})
+
+        il = _detect_province(addr)
+        if not il:
+            return None
+
+        ilce_display = (
+            addr.get("town")
+            or addr.get("city_district")
+            or addr.get("district")
+            or addr.get("county")
+            or addr.get("municipality")
+            or addr.get("village")
+            or ""
+        ).strip()
+
+        return {
+            "il": il,
+            "ilce_key": district_key(ilce_display) if ilce_display else None,
+            "ilce_display": ilce_display,
+        }
+    except Exception:
+        logger.exception("Nominatim reverse geocoding hatası")
+        return None
+
+
+# Geriye dönük uyumluluk
+def get_district_for_location(lat: float, lng: float):
+    """ESKI API — sadece ilçe anahtarını döner."""
+    info = get_location_info(lat, lng)
+    return info.get("ilce_key") if info else None
 
 
 if __name__ == "__main__":
     import json
-    for p in fetch_pharmacies():
+    logging.basicConfig(level=logging.INFO)
+    print(f"Toplam: {len(fetch_pharmacies('kahramanmaras'))} (Maraş)")
+    for p in fetch_pharmacies("kahramanmaras")[:3]:
         print(json.dumps(p, ensure_ascii=False))

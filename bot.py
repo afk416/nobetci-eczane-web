@@ -1,4 +1,4 @@
-"""Kahramanmaraş nöbetçi eczane Telegram botu."""
+"""Nobetcim — Türkiye geneli nöbetçi eczane Telegram botu."""
 import logging
 import math
 import os
@@ -20,25 +20,9 @@ from telegram.ext import (
 )
 
 from pharmacy_scraper import (
-    DISTRICT_NORMALIZE,
     fetch_pharmacies,
-    get_district_for_location,
+    get_location_info,
 )
-
-# İlçe anahtarından kullanıcıya gösterilecek isim
-DISTRICT_DISPLAY = {
-    "merkez": "Merkez (Onikişubat + Dulkadiroğlu)",
-    "afsin": "Afşin",
-    "andirin": "Andırın",
-    "caglayancerit": "Çağlayancerit",
-    "ekinozu": "Ekinözü",
-    "elbistan": "Elbistan",
-    "goksun": "Göksun",
-    "narli": "Narlı",
-    "nurhak": "Nurhak",
-    "pazarcik": "Pazarcık",
-    "turkoglu": "Türkoğlu",
-}
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -47,12 +31,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "BURAYA_TOKEN_YAPISTIR")
-
 BUTTON_TEXT = "📍 Bana en yakın nöbetçi eczaneyi bul"
-WEB_APP_URL = os.environ.get(
-    "WEB_APP_URL", "https://nobetci-eczane-web.onrender.com/"
-)
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://nobetcim.com.tr/")
 
+# Bot başlangıcında ısıtılacak il (varsayılan: Maraş)
+WARMUP_PROVINCE = os.environ.get("WARMUP_PROVINCE", "kahramanmaras")
+
+
+# ---------------------------------------------------------------------------
+# Yardımcılar
+# ---------------------------------------------------------------------------
 
 def main_keyboard() -> ReplyKeyboardMarkup:
     button = KeyboardButton(text=BUTTON_TEXT, request_location=True)
@@ -65,7 +53,6 @@ def main_keyboard() -> ReplyKeyboardMarkup:
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """İki koordinat arası mesafe (km)."""
     R = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
@@ -80,65 +67,56 @@ def format_distance(km: float) -> str:
     return f"{km:.2f} km"
 
 
+def il_display(il_key: str) -> str:
+    """İl anahtarından kullanıcıya gösterilecek başlık."""
+    if not il_key:
+        return ""
+    # Türkçe karakter restore: bazı sık iller için
+    overrides = {
+        "kahramanmaras": "Kahramanmaraş",
+        "istanbul": "İstanbul",
+        "izmir": "İzmir",
+        "gaziantep": "Gaziantep",
+        "sanliurfa": "Şanlıurfa",
+        "diyarbakir": "Diyarbakır",
+        "mugla": "Muğla",
+        "balikesir": "Balıkesir",
+        "agri": "Ağrı",
+        "elazig": "Elazığ",
+        "kutahya": "Kütahya",
+        "afyonkarahisar": "Afyonkarahisar",
+        "aydin": "Aydın",
+        "canakkale": "Çanakkale",
+        "cankiri": "Çankırı",
+        "corum": "Çorum",
+        "tekirdag": "Tekirdağ",
+        "usak": "Uşak",
+        "nigde": "Niğde",
+        "mus": "Muş",
+        "icel": "Mersin",
+    }
+    return overrides.get(il_key, il_key.title())
+
+
+# ---------------------------------------------------------------------------
+# Komutlar
+# ---------------------------------------------------------------------------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     text = (
         f"Merhaba {user.first_name}! 👋\n\n"
-        "Ben Kahramanmaraş Nöbetçi Eczane botuyum.\n\n"
+        "Ben *Nobetcim* — Türkiye'nin her ilindeki nöbetçi eczaneleri "
+        "bulmana yardım ederim.\n\n"
         f"📱 *Telefondan:* Aşağıdaki *{BUTTON_TEXT}* butonuna bas, "
-        "konumunu paylaş, en yakın eczaneyi göstereyim.\n\n"
-        f"💻 *Tarayıcıda açmak istersen:* [buraya tıkla]({WEB_APP_URL})\n\n"
-        "📋 Tüm nöbetçi eczaneleri görmek için /liste yaz."
+        "konumunu paylaş, bulunduğun ilçeye en yakın nöbetçi eczaneyi göstereyim.\n\n"
+        f"💻 *Tarayıcıda açmak istersen:* [buraya tıkla]({WEB_APP_URL})"
     )
     await update.message.reply_text(
         text,
         reply_markup=main_keyboard(),
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
-    )
-
-
-async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id, action=ChatAction.TYPING
-    )
-    try:
-        pharmacies = fetch_pharmacies()
-    except Exception:
-        logger.exception("Eczane verisi çekilemedi")
-        await update.message.reply_text(
-            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    if not pharmacies:
-        await update.message.reply_text(
-            "Bugün için nöbetçi eczane bulunamadı.",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    satirlar = ["🏥 *Bugünkü Nöbetçi Eczaneler*\n"]
-    for i, p in enumerate(pharmacies, 1):
-        ad = p["ad"]
-        if p.get("ilce"):
-            ad = f"{ad} ({p['ilce']})"
-        tel = p.get("tel") or "-"
-        harita = p.get("harita") or ""
-        harita_md = f"[🗺️ harita]({harita})" if harita else ""
-        satirlar.append(
-            f"*{i}. {ad}*\n"
-            f"📍 {p.get('adres') or '-'}\n"
-            f"📞 {tel}\n"
-            f"{harita_md}\n"
-        )
-
-    await update.message.reply_text(
-        "\n".join(satirlar),
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True,
-        reply_markup=main_keyboard(),
     )
 
 
@@ -154,10 +132,26 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         chat_id=update.effective_chat.id, action=ChatAction.TYPING
     )
 
+    # 1) Kullanıcının il/ilçesini bul
+    info = get_location_info(user_lat, user_lng)
+    if not info or not info.get("il"):
+        await update.message.reply_text(
+            "❌ Bulunduğun il tespit edilemedi. "
+            "Türkiye dışındaysan veya konum izninle ilgili sorun olabilir.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    il_key = info["il"]
+    user_district = info.get("ilce_key")
+    ilce_display = info.get("ilce_display") or ""
+    logger.info("Tespit: il=%s ilce=%s", il_key, user_district)
+
+    # 2) O ilin eczanelerini çek
     try:
-        pharmacies = fetch_pharmacies()
-    except Exception as e:
-        logger.exception("Eczane verisi çekilemedi")
+        pharmacies = fetch_pharmacies(il_key)
+    except Exception:
+        logger.exception("Eczane verisi çekilemedi (il=%s)", il_key)
         await update.message.reply_text(
             "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene.",
             reply_markup=main_keyboard(),
@@ -167,62 +161,40 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     all_geo = [p for p in pharmacies if p.get("lat") and p.get("lng")]
     if not all_geo:
         await update.message.reply_text(
-            "Bugün için koordinatlı nöbetçi eczane bulunamadı.",
+            f"Bugün *{il_display(il_key)}* için koordinatlı nöbetçi eczane bulunamadı.",
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=main_keyboard(),
         )
         return
 
-    # Kullanıcının ilçesini bul, o ilçenin eczanelerini filtrele
-    user_district = get_district_for_location(user_lat, user_lng)
-    logger.info("Kullanıcı ilçesi: %s", user_district)
-
+    # 3) İlçeye göre filtre, yoksa tüm il
     geo = [p for p in all_geo if p.get("ilce_key") == user_district] if user_district else []
     fallback_used = False
     if not geo:
-        # İlçede nöbetçi yoksa veya ilçe tespit edilemediyse hepsini göster
         geo = all_geo
         fallback_used = True
 
+    # 4) Mesafe hesabı ve sıralama
     for p in geo:
         p["_km"] = haversine_km(user_lat, user_lng, p["lat"], p["lng"])
-
     geo.sort(key=lambda x: x["_km"])
     nearest = geo[0]
 
-    if fallback_used:
-        if user_district:
-            note = (
-                f"_⚠️ {DISTRICT_DISPLAY.get(user_district, user_district)} "
-                "bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum._\n\n"
-            )
-        else:
-            note = (
-                "_⚠️ Bulunduğun ilçe tespit edilemedi. "
-                "Tüm il listesini gösteriyorum._\n\n"
-            )
+    # 5) Fallback uyarısı
+    if fallback_used and user_district:
+        note = (
+            f"_⚠️ *{ilce_display}* bölgesinde bugün nöbetçi eczane yok. "
+            f"Tüm *{il_display(il_key)}* listesini gösteriyorum._\n\n"
+        )
         await update.message.reply_text(
             note,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=main_keyboard(),
         )
 
-    ad = nearest["ad"]
-    if nearest.get("ilce"):
-        ad = f"{ad} ({nearest['ilce']})"
-
-    tel = nearest.get("tel") or "-"
-
-    mesaj = (
-        f"🏥 *En Yakın Nöbetçi Eczane*\n\n"
-        f"*{ad}*\n"
-        f"📏 Mesafe: *{format_distance(nearest['_km'])}*\n"
-        f"📍 Adres: {nearest.get('adres') or '-'}\n"
-        f"📞 Telefon: {tel}\n"
-        f"🗺️ [Google Maps'te Aç]({nearest['harita']})\n\n"
-        "_Yol tarifi için aşağıdaki konum mesajına dokun._"
-    )
-
-    liste_metni = "*Nöbetçi Eczaneler (mesafeye göre):*\n\n"
+    # 6) Liste mesajı
+    baslik_ilce = ilce_display if not fallback_used and user_district else il_display(il_key)
+    liste_metni = f"*{baslik_ilce} — Nöbetçi Eczaneler (mesafeye göre):*\n\n"
     for i, p in enumerate(geo):
         ad_l = p["ad"]
         if p.get("ilce"):
@@ -241,6 +213,20 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         reply_markup=main_keyboard(),
     )
 
+    # 7) En yakın detay
+    ad = nearest["ad"]
+    if nearest.get("ilce"):
+        ad = f"{ad} ({nearest['ilce']})"
+    tel = nearest.get("tel") or "-"
+    mesaj = (
+        f"🏥 *En Yakın Nöbetçi Eczane*\n\n"
+        f"*{ad}*\n"
+        f"📏 Mesafe: *{format_distance(nearest['_km'])}*\n"
+        f"📍 Adres: {nearest.get('adres') or '-'}\n"
+        f"📞 Telefon: {tel}\n"
+        f"🗺️ [Google Maps'te Aç]({nearest['harita']})\n\n"
+        "_Yol tarifi için aşağıdaki konum mesajına dokun._"
+    )
     await update.message.reply_text(
         mesaj,
         parse_mode=ParseMode.MARKDOWN,
@@ -248,11 +234,71 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         reply_markup=main_keyboard(),
     )
 
+    # 8) Konum pini
     await update.message.reply_location(
         latitude=nearest["lat"],
         longitude=nearest["lng"],
         reply_markup=main_keyboard(),
     )
+
+
+async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/liste KAHRAMANMARAS gibi parametre alır, parametresizde varsayılan il."""
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING
+    )
+
+    args = context.args or []
+    il = " ".join(args).strip() if args else WARMUP_PROVINCE
+    if not il:
+        il = WARMUP_PROVINCE
+
+    try:
+        pharmacies = fetch_pharmacies(il)
+    except Exception:
+        logger.exception("Eczane verisi çekilemedi (/liste il=%s)", il)
+        await update.message.reply_text(
+            "❌ Eczane listesi alınamadı. Lütfen az sonra tekrar dene "
+            "veya il adını kontrol et. Örnek: `/liste istanbul`",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    if not pharmacies:
+        await update.message.reply_text(
+            f"*{il_display(il)}* için bugün nöbetçi eczane bulunamadı.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    # Mesaj uzunluğu sınırı (Telegram 4096 karakter) — chunk'a böl
+    chunks = [f"🏥 *{il_display(il)} — Nöbetçi Eczaneler*\n\n"]
+    for i, p in enumerate(pharmacies, 1):
+        ad = p["ad"]
+        if p.get("ilce"):
+            ad = f"{ad} ({p['ilce']})"
+        tel = p.get("tel") or "-"
+        harita = p.get("harita") or ""
+        harita_md = f"[🗺️ harita]({harita})" if harita else ""
+        block = (
+            f"*{i}. {ad}*\n"
+            f"📍 {p.get('adres') or '-'}\n"
+            f"📞 {tel}   {harita_md}\n\n"
+        )
+        if len(chunks[-1]) + len(block) > 3500:
+            chunks.append("")
+        chunks[-1] += block
+
+    for chunk in chunks:
+        if chunk.strip():
+            await update.message.reply_text(
+                chunk,
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True,
+                reply_markup=main_keyboard(),
+            )
 
 
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -272,7 +318,7 @@ async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     msg = (
         f"Konum paylaşmak için aşağıdaki *{BUTTON_TEXT}* butonuna bas "
-        "(telefondan) ya da /liste yaz."
+        "(telefondan) ya da `/liste istanbul` gibi yaz."
     )
     await update.message.reply_text(
         msg, reply_markup=main_keyboard(), parse_mode=ParseMode.MARKDOWN
@@ -282,10 +328,7 @@ async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def main() -> None:
     if not BOT_TOKEN or BOT_TOKEN == "BURAYA_TOKEN_YAPISTIR":
         raise SystemExit(
-            "Hata: TELEGRAM_BOT_TOKEN ortam değişkeni ayarlı değil. "
-            "Önce BotFather'dan token al ve şu şekilde çalıştır:\n"
-            '  set TELEGRAM_BOT_TOKEN=123456:ABC...\n'
-            "  python bot.py"
+            "Hata: TELEGRAM_BOT_TOKEN ortam değişkeni ayarlı değil."
         )
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -296,10 +339,10 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback))
 
     try:
-        fetch_pharmacies()
-        logger.info("Eczane cache'i ısıtıldı.")
+        fetch_pharmacies(WARMUP_PROVINCE)
+        logger.info("Cache ısıtıldı (%s)", WARMUP_PROVINCE)
     except Exception:
-        logger.warning("Cache ön-ısıtma başarısız, ilk istek daha yavaş olabilir.")
+        logger.warning("Cache ön-ısıtma başarısız")
 
     logger.info("Bot başlıyor...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

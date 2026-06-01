@@ -6,3 +6,10 @@ venv/
 .env
 .DS_Store
 *.log
+
+# Credentials — bunlar asla repo'ya girmesin
+collectapi_token.txt
+*.token
+.collectapi_token
+.token
+secrets/

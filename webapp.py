@@ -1,21 +1,15 @@
-"""En yakın nöbetçi eczaneyi bulan web uygulaması."""
+"""Nobetcim — Türkiye geneli nöbetçi eczane web servisi."""
+import logging
+
 from flask import Flask, jsonify, render_template, request
 
-from pharmacy_scraper import fetch_pharmacies, get_district_for_location
+from pharmacy_scraper import fetch_pharmacies, get_location_info
 
-DISTRICT_DISPLAY = {
-    "merkez": "Merkez (Onikişubat + Dulkadiroğlu)",
-    "afsin": "Afşin",
-    "andirin": "Andırın",
-    "caglayancerit": "Çağlayancerit",
-    "ekinozu": "Ekinözü",
-    "elbistan": "Elbistan",
-    "goksun": "Göksun",
-    "narli": "Narlı",
-    "nurhak": "Nurhak",
-    "pazarcik": "Pazarcık",
-    "turkoglu": "Türkoğlu",
-}
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -25,41 +19,77 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/healthz")
+def healthz():
+    return {"status": "ok"}, 200
+
+
 @app.route("/api/pharmacies")
 def api_pharmacies():
-    """lat/lng verilirse kullanıcının ilçesindeki eczaneleri döner.
-    Verilmezse tüm liste (geriye dönük uyumluluk)."""
-    try:
-        all_data = fetch_pharmacies()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """En yakın nöbetçi eczaneleri döner.
 
+    Parametre:
+        lat, lng — kullanıcı konumu (verirse il + ilçe otomatik tespit)
+        il — manuel il (lat/lng yoksa)
+    """
     lat = request.args.get("lat", type=float)
     lng = request.args.get("lng", type=float)
+    il_param = (request.args.get("il") or "").strip()
 
-    if lat is None or lng is None:
-        return jsonify(all_data)
+    # 1) Konumdan il + ilçe tespit
+    user_il = None
+    user_district = None
+    ilce_display = None
+    if lat is not None and lng is not None:
+        info = get_location_info(lat, lng)
+        if info:
+            user_il = info.get("il")
+            user_district = info.get("ilce_key")
+            ilce_display = info.get("ilce_display")
 
-    district = get_district_for_location(lat, lng)
-    district_pharmacies = (
-        [p for p in all_data if p.get("ilce_key") == district] if district else []
-    )
+    # Manuel il parametresi varsa onu öncelikle kullan
+    target_il = il_param or user_il
+    if not target_il:
+        return jsonify(
+            {
+                "error": "Konum tespit edilemedi. Türkiye sınırları içinde olduğundan emin ol.",
+            }
+        ), 400
+
+    # 2) İl için eczane listesi
+    try:
+        all_data = fetch_pharmacies(target_il)
+    except Exception as e:
+        logger.exception("CollectAPI hatası (il=%s)", target_il)
+        return jsonify({"error": f"Eczane verisi alınamadı: {e}"}), 500
+
+    # 3) Kullanıcı konum verdiyse ilçeye göre filtre
+    if user_district:
+        district_pharmacies = [
+            p for p in all_data if p.get("ilce_key") == user_district
+        ]
+    else:
+        district_pharmacies = []
 
     if district_pharmacies:
         return jsonify(
             {
                 "pharmacies": district_pharmacies,
-                "user_district": district,
-                "user_district_display": DISTRICT_DISPLAY.get(district, district),
+                "user_province": target_il,
+                "user_district": user_district,
+                "user_district_display": ilce_display,
                 "fallback": False,
             }
         )
+
+    # Fallback: tüm il
     return jsonify(
         {
             "pharmacies": all_data,
-            "user_district": district,
-            "user_district_display": DISTRICT_DISPLAY.get(district) if district else None,
-            "fallback": True,
+            "user_province": target_il,
+            "user_district": user_district,
+            "user_district_display": ilce_display,
+            "fallback": bool(user_district),  # ilçe vardı ama o ilçede nöbetçi yok
         }
     )
 
