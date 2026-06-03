@@ -89,7 +89,7 @@
         <em>Saklama:</em> Sunucularımıza kaydedilmez; istek sonunda silinir.
       </li>
       <li>
-        <strong>IP adresi (anonim)</strong> — Cloudflare CDN tarafından otomatik işlenir.
+        <strong>IP adresi (anonim)</strong> — Güvenlik/CDN altyapımız tarafından otomatik işlenir.
         <em>Amaç:</em> Güvenlik (DDoS koruması) ve toplu trafik istatistikleri.
         <em>Saklama:</em> Bireysel kayıt tutulmaz, sadece toplu sayım.
       </li>
@@ -102,19 +102,17 @@
     </ul>
 
     <h2>3. Üçüncü Taraflar</h2>
-    <p>Nobetcim aşağıdaki üçüncü taraf hizmetleri kullanır:</p>
+    <p>Nobetcim, hizmeti sunmak için sınırlı sayıda üçüncü taraf altyapı hizmetinden yararlanır:</p>
     <ul>
-      <li><strong>TİTCK (e-Devlet) ve İl Eczacı Odaları</strong> — Nöbetçi eczane verilerinin resmi kaynağı (sunucumuz periyodik olarak çeker; kişisel veriniz gönderilmez).</li>
-      <li><strong>Nominatim (OpenStreetMap)</strong> — Koordinatınızı ilçe adına çevirmek için (sorgu sonunda silinir).</li>
-      <li><strong>OpenFreeMap (MapLibre)</strong> — Eczaneleri harita üzerinde göstermek için harita altlığı.</li>
-      <li><strong>Cloudflare</strong> — CDN, güvenlik, DNS hizmetleri.</li>
-      <li><strong>Telegram Bot API</strong> — Telegram botu çalıştırma altyapısı.</li>
-      <li><strong>Google Maps</strong> — Yalnızca yol tarifi linki açıldığında.</li>
+      <li><strong>Resmi veri kaynakları</strong> — Nöbetçi eczane verilerinin alındığı kamuya açık resmi kaynaklar (kişisel veriniz gönderilmez).</li>
+      <li><strong>Harita ve konum servisleri</strong> — Eczaneleri harita üzerinde göstermek ve koordinatınızı bölge adına çevirmek için (sorgu sonunda silinir).</li>
+      <li><strong>Güvenlik / CDN sağlayıcısı</strong> — Site güvenliği, DDoS koruması ve içerik dağıtımı için.</li>
+      <li><strong>Yol tarifi servisi</strong> — Yalnızca yol tarifi bağlantısı açıldığında devreye girer.</li>
     </ul>
 
     <h2>4. Çerezler</h2>
     <p>
-      Nobetcim kendi çerezini kullanmaz. Cloudflare güvenlik altyapısı kapsamında geçici
+      Nobetcim kendi çerezini kullanmaz. Güvenlik altyapımız kapsamında geçici
       teknik çerezler kullanılabilir (DDoS koruması için, kişisel takip amaçlı değil).
     </p>
 
@@ -132,25 +130,19 @@
       iletebilirsiniz. 30 gün içinde yanıt verilir.
     </p>
 
-    <h2>6. Çocukların Gizliliği</h2>
+    <h2>6. Veri Güvenliği</h2>
     <p>
-      Nobetcim 13 yaşın altındaki kullanıcılardan bilinçli olarak veri toplamaz.
-      Çocukların ebeveynleri/velileri kontrolünde hizmeti kullanması beklenir.
+      Site bağlantıları HTTPS (SSL/TLS) ile şifrelenir. Yetkisiz erişimi önlemek için
+      DDoS koruması, güvenlik duvarı ve benzeri güvenlik önlemleri kullanılır.
     </p>
 
-    <h2>7. Veri Güvenliği</h2>
-    <p>
-      Site bağlantıları HTTPS (SSL/TLS) ile şifrelenir. Sunucular Almanya'da
-      bulunmaktadır. Yetkisiz erişimi önlemek için Cloudflare DDoS koruması ve firewall kullanılır.
-    </p>
-
-    <h2>8. Politika Değişiklikleri</h2>
+    <h2>7. Politika Değişiklikleri</h2>
     <p>
       Bu politika güncellenebilir. Önemli değişiklikler sitede ilan edilir. Politikayı
       düzenli olarak gözden geçirmeniz önerilir.
     </p>
 
-    <h2>9. İletişim</h2>
+    <h2>8. İletişim</h2>
     <p>
       Soru, talep veya şikayetleriniz için: <a href="mailto:afk416@gmail.com">afk416@gmail.com</a>
     </p>
