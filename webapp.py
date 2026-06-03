@@ -103,33 +103,14 @@ def api_pharmacies():
         logger.exception("CollectAPI hatası (il=%s)", target_il)
         return jsonify({"error": f"Eczane verisi alınamadı: {e}"}), 500
 
-    # 3) Kullanıcı konum verdiyse ilçeye göre filtre
-    if user_district:
-        district_pharmacies = [
-            p for p in all_data if p.get("ilce_key") == user_district
-        ]
-    else:
-        district_pharmacies = []
-
-    if district_pharmacies:
-        return jsonify(
-            {
-                "pharmacies": district_pharmacies,
-                "user_province": target_il,
-                "user_district": user_district,
-                "user_district_display": ilce_display,
-                "fallback": False,
-            }
-        )
-
-    # Fallback: tüm il
+    # 3) İlçe farketmeksizin ildeki tüm nöbetçi eczaneleri döner;
+    # frontend kullanıcı konumuna göre 15 km yarıçapında süzüp sıralar.
     return jsonify(
         {
             "pharmacies": all_data,
             "user_province": target_il,
             "user_district": user_district,
             "user_district_display": ilce_display,
-            "fallback": bool(user_district),  # ilçe vardı ama o ilçede nöbetçi yok
         }
     )
 

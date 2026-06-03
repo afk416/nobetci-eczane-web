@@ -326,6 +326,7 @@ function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", isError);
 }
+const RADIUS_KM = 15;  // ilçe farketmeksizin bu yarıçaptaki tüm eczaneler
 function toRad(d) { return d * Math.PI / 180; }
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -519,29 +520,28 @@ async function fetchAndRank() {
   if (resp.error) throw new Error(resp.error);
 
   const pharmacies = resp.pharmacies || resp;
-  const fallback = resp.fallback === true;
-  const districtName = resp.user_district_display;
 
-  const geo = (pharmacies || []).filter(p => p.lat && p.lng);
-  if (!geo.length) {
+  const all = (pharmacies || []).filter(p => p.lat && p.lng);
+  if (!all.length) {
     throw new Error("Bugün için koordinatlı nöbetçi eczane bulunamadı.");
   }
-  geo.forEach(p => { p._km = haversineKm(loc.lat, loc.lng, p.lat, p.lng); });
-  geo.sort((a, b) => a._km - b._km);
+  all.forEach(p => { p._km = haversineKm(loc.lat, loc.lng, p.lat, p.lng); });
+  all.sort((a, b) => a._km - b._km);
+
+  // İlçe farketmeksizin 15 km yarıçapındaki tüm eczaneler.
+  // 15 km içinde hiç yoksa en yakın 3'ü göster (boş ekran olmasın).
+  const within = all.filter(p => p._km <= RADIUS_KM);
+  const geo = within.length ? within : all.slice(0, 3);
 
   _lastGeo = geo;
-  return { geo, fallback, districtName };
+  return { geo, withinRadius: within.length > 0, nearestKm: all[0]._km };
 }
 
-function showStatusMsg(fallback, districtName) {
-  if (fallback) {
-    setStatus(districtName
-      ? `⚠️ ${districtName} bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum.`
-      : "⚠️ Bulunduğun ilçe tespit edilemedi. Tüm il listesini gösteriyorum.", true);
-  } else if (districtName) {
-    setStatus(`📍 ${districtName} bölgesi`);
+function showStatusMsg(withinRadius, nearestKm) {
+  if (withinRadius) {
+    setStatus(`📍 ${RADIUS_KM} km içindeki nöbetçi eczaneler (${_lastGeo.length})`);
   } else {
-    setStatus("");
+    setStatus(`⚠️ ${RADIUS_KM} km içinde nöbetçi eczane yok. En yakını ${nearestKm.toFixed(1)} km uzakta.`, true);
   }
 }
 
@@ -555,8 +555,8 @@ findBtn.addEventListener("click", async () => {
   listView.classList.remove("hidden");
   setStatus("Konum alınıyor...");
   try {
-    const { geo, fallback, districtName } = await fetchAndRank();
-    showStatusMsg(fallback, districtName);
+    const { geo, withinRadius, nearestKm } = await fetchAndRank();
+    showStatusMsg(withinRadius, nearestKm);
     renderResult(geo[0], geo.slice(1));
   } catch (e) {
     setStatus(e.message, true);
@@ -572,8 +572,8 @@ mapBtn.addEventListener("click", async () => {
   mapBtn.disabled = true;
   setStatus("Konum alınıyor...");
   try {
-    const { geo, fallback, districtName } = await fetchAndRank();
-    showStatusMsg(fallback, districtName);
+    const { geo, withinRadius, nearestKm } = await fetchAndRank();
+    showStatusMsg(withinRadius, nearestKm);
     listView.classList.add("hidden");
     mapView.classList.remove("hidden");
     renderMap();

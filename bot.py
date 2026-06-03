@@ -69,6 +69,9 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+RADIUS_KM = 15  # ilçe farketmeksizin bu yarıçaptaki tüm eczaneler
+
+
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -161,7 +164,6 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     il_key = info["il"]
     user_district = info.get("ilce_key")
-    ilce_display = info.get("ilce_display") or ""
     logger.info("Tespit: il=%s ilce=%s", il_key, user_district)
 
     # 2) O ilin eczanelerini çek
@@ -184,24 +186,21 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # 3) İlçeye göre filtre, yoksa tüm il
-    geo = [p for p in all_geo if p.get("ilce_key") == user_district] if user_district else []
-    fallback_used = False
-    if not geo:
-        geo = all_geo
-        fallback_used = True
-
-    # 4) Mesafe hesabı ve sıralama
-    for p in geo:
+    # 3) Mesafe hesabı ve sıralama (ilçe farketmeksizin)
+    for p in all_geo:
         p["_km"] = haversine_km(user_lat, user_lng, p["lat"], p["lng"])
-    geo.sort(key=lambda x: x["_km"])
+    all_geo.sort(key=lambda x: x["_km"])
+
+    # 4) 15 km yarıçapındaki tüm eczaneler; içinde hiç yoksa en yakın 3'ü göster
+    within = [p for p in all_geo if p["_km"] <= RADIUS_KM]
+    geo = within if within else all_geo[:3]
     nearest = geo[0]
 
-    # 5) Fallback uyarısı
-    if fallback_used and user_district:
+    # 5) 15 km içinde yoksa uyarı
+    if not within:
         note = (
-            f"_⚠️ *{ilce_display}* bölgesinde bugün nöbetçi eczane yok. "
-            f"Tüm *{il_display(il_key)}* listesini gösteriyorum._\n\n"
+            f"_⚠️ {RADIUS_KM} km içinde nöbetçi eczane yok. "
+            f"En yakını {format_distance(all_geo[0]['_km'])} uzakta._\n\n"
         )
         await update.message.reply_text(
             note,
@@ -210,8 +209,10 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
     # 6) Liste mesajı
-    baslik_ilce = ilce_display if not fallback_used and user_district else il_display(il_key)
-    liste_metni = f"*{baslik_ilce} — Nöbetçi Eczaneler (mesafeye göre):*\n\n"
+    liste_metni = (
+        f"*{il_display(il_key)} — {RADIUS_KM} km içindeki Nöbetçi Eczaneler "
+        f"(mesafeye göre):*\n\n"
+    )
     for i, p in enumerate(geo):
         ad_l = p["ad"]
         if p.get("ilce"):
