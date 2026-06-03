@@ -404,7 +404,7 @@ function escapeHtml(s) {
 function pharmacyName(ad) {
   const s = String(ad || "").trim();
   if (!s) return "Eczane";
-  return /eczane/i.test(s) ? s : s + " Eczanesi";
+  return /eczane/i.test(s) ? s : s + " ECZANESİ";
 }
 
 async function getPharmaciesForLocation(lat, lng) {
