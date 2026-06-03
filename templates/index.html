@@ -12,8 +12,6 @@
     --card: #ffffff;
     --accent: #246b8f;
     --accent-dark: #1a536e;
-    --green: #2e9c5e;
-    --orange: #e8762a;
     --text: #1f2d3a;
     --muted: #677889;
     --border: #e2e8ef;
@@ -25,22 +23,20 @@
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 16px;
   }
   .app {
     width: 100%;
     max-width: 540px;
-    margin: 0 auto;
-    padding: 24px 16px;
   }
   header {
     text-align: center;
     margin-bottom: 20px;
   }
-  header h1 {
-    margin: 0 0 6px;
-    font-size: 22px;
-    color: var(--accent);
-  }
+  header h1 { margin: 0 0 6px; font-size: 22px; color: var(--accent); }
   header p { margin: 0; color: var(--muted); font-size: 14px; }
   .card {
     background: var(--card);
@@ -51,24 +47,40 @@
     margin-bottom: 16px;
   }
   button {
-    width: 100%;
     border: none;
     border-radius: 10px;
-    padding: 14px 16px;
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    padding: 14px 16px;
+    flex: 1;
+  }
   .btn-primary:hover { background: var(--accent-dark); }
   .btn-primary:disabled { background: #9eb5c3; cursor: not-allowed; }
-  .btn-secondary {
+
+  /* Küçük harita butonu */
+  .btn-map {
     background: #fff;
     color: var(--accent);
     border: 2px solid var(--accent);
+    padding: 14px 14px;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
-  .btn-secondary:hover { background: var(--accent); color: #fff; }
+  .btn-map:hover { background: var(--accent); color: #fff; }
+  .btn-map:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+
   .status {
     margin-top: 12px;
     font-size: 14px;
@@ -77,11 +89,8 @@
     min-height: 20px;
   }
   .status.error { color: #c23a3a; }
-  .result h2 {
-    margin: 0 0 6px;
-    font-size: 18px;
-    color: var(--accent);
-  }
+
+  .result h2 { margin: 0 0 6px; font-size: 18px; color: var(--accent); }
   .result .distance {
     display: inline-block;
     background: #e7f1f7;
@@ -123,68 +132,45 @@
     color: var(--muted);
     font-size: 12px;
     margin-top: 14px;
-    padding: 16px;
   }
   .hidden { display: none !important; }
 
-  /* View toggle */
-  .view-toggle {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .view-toggle button {
-    flex: 1;
-    padding: 10px 12px;
-    font-size: 14px;
-  }
-  .view-toggle .active {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-  }
-  .view-toggle .inactive {
-    background: #fff;
-    color: var(--accent);
-    border: 2px solid var(--accent);
-  }
-
-  /* Map */
-  #mapView {
-    margin-bottom: 16px;
-  }
+  /* Harita */
+  #mapCard { padding: 0; overflow: hidden; }
   #map {
-    height: 520px;
+    height: 540px;
+    width: 100%;
     border-radius: 14px;
-    border: 1px solid var(--border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   }
   .leaflet-popup-content {
     font-family: inherit;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 1.45;
+    min-width: 200px;
   }
   .leaflet-popup-content .pop-name {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--accent-dark);
     margin-bottom: 4px;
+    font-size: 15px;
   }
   .leaflet-popup-content .pop-meta {
     color: var(--muted);
     font-size: 12.5px;
   }
-  .leaflet-popup-content a {
+  .leaflet-popup-content a { color: var(--accent); font-weight: 600; }
+
+  /* Geri dönüş butonu (harita modunda) */
+  #backToList {
+    margin-bottom: 12px;
+    background: #fff;
     color: var(--accent);
-    font-weight: 600;
+    border: 2px solid var(--accent);
+    padding: 12px 16px;
+    width: 100%;
+    font-size: 15px;
   }
-  .marker-near {
-    background: var(--green);
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 3px solid white;
-    box-shadow: 0 0 0 2px var(--green), 0 1px 4px rgba(0,0,0,0.3);
-  }
+  #backToList:hover { background: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -194,23 +180,24 @@
     <p>Konumunu paylaş, sana en yakın nöbetçi eczaneyi bulalım.</p>
   </header>
 
-  <div class="card">
-    <button id="findBtn" class="btn-primary">📍 Bana en yakın nöbetçi eczaneyi bul</button>
+  <!-- ANA BUTON BÖLGESİ -->
+  <div id="mainCard" class="card">
+    <div class="btn-row">
+      <button id="findBtn" class="btn-primary">📍 Bana en yakın nöbetçi eczaneyi bul</button>
+      <button id="mapBtn" class="btn-map" title="Haritada gör">🗺️ Haritada gör</button>
+    </div>
     <div id="status" class="status"></div>
   </div>
 
-  <!-- Görünüm modu seçici (sonuç gelince görünür) -->
-  <div id="viewToggle" class="view-toggle hidden">
-    <button id="listToggle" class="active">📋 Liste</button>
-    <button id="mapToggle" class="inactive">🗺️ Haritada Göster</button>
-  </div>
-
-  <!-- HARITA görünümü -->
+  <!-- HARİTA MODU -->
   <div id="mapView" class="hidden">
-    <div id="map"></div>
+    <button id="backToList">← Listeye dön</button>
+    <div id="mapCard" class="card">
+      <div id="map"></div>
+    </div>
   </div>
 
-  <!-- LISTE görünümü -->
+  <!-- LİSTE MODU (varsayılan) -->
   <div id="listView">
     <div id="resultCard" class="card result hidden">
       <h2 id="pName"></h2>
@@ -238,14 +225,14 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const findBtn = $("findBtn");
+const mapBtn = $("mapBtn");
+const backToList = $("backToList");
 const statusEl = $("status");
+const mainCard = $("mainCard");
+const mapView = $("mapView");
+const listView = $("listView");
 const resultCard = $("resultCard");
 const othersCard = $("othersCard");
-const viewToggle = $("viewToggle");
-const listView = $("listView");
-const mapView = $("mapView");
-const listToggleBtn = $("listToggle");
-const mapToggleBtn = $("mapToggle");
 
 let _mapInstance = null;
 let _lastGeo = null;
@@ -268,6 +255,13 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 function formatDist(km) {
   if (km < 1) return Math.round(km * 1000) + " m";
   return km.toFixed(2) + " km";
+}
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 async function getPharmaciesForLocation(lat, lng) {
@@ -311,7 +305,6 @@ function renderResult(nearest, others) {
   $("pName").textContent = nearest.ad + (nearest.ilce ? " (" + nearest.ilce + ")" : "");
   $("pDistance").textContent = "📏 " + formatDist(nearest._km);
   $("pAddress").textContent = nearest.adres || "-";
-
   const phoneLink = $("pPhone");
   if (nearest.tel) {
     phoneLink.textContent = nearest.tel;
@@ -350,7 +343,7 @@ function renderResult(nearest, others) {
   }
 }
 
-// ----- HARITA -----
+// ---- Harita ikon yardımcıları ----
 function makePharmacyIcon(isNearest) {
   const color = isNearest ? "#e8762a" : "#246b8f";
   const size = isNearest ? 38 : 30;
@@ -361,12 +354,7 @@ function makePharmacyIcon(isNearest) {
       <circle cx="16" cy="13" r="6" fill="white"/>
       <path d="M13 13h6M16 10v6" stroke="${color}" stroke-width="2.4" stroke-linecap="round"/>
     </svg>`;
-  return L.divIcon({
-    className: "",
-    html: svg,
-    iconSize: [size, size],
-    iconAnchor: [size/2, size]
-  });
+  return L.divIcon({ className:"", html: svg, iconSize:[size,size], iconAnchor:[size/2,size] });
 }
 function makeUserIcon() {
   const html = `<div style="
@@ -385,24 +373,18 @@ function renderMap() {
     }).addTo(_mapInstance);
   } else {
     _mapInstance.eachLayer(l => {
-      if (l instanceof L.Marker || l instanceof L.LayerGroup) {
-        _mapInstance.removeLayer(l);
-      }
+      if (l instanceof L.Marker) _mapInstance.removeLayer(l);
     });
   }
 
-  // Kullanıcı konumu
   L.marker([_lastLoc.lat, _lastLoc.lng], { icon: makeUserIcon(), zIndexOffset: 1000 })
     .addTo(_mapInstance)
     .bindPopup("📍 Buradasın");
 
-  // Eczaneler
   const bounds = [[_lastLoc.lat, _lastLoc.lng]];
   _lastGeo.forEach((p, i) => {
     const isNearest = i === 0;
-    const phoneHtml = p.tel
-      ? `📞 <a href="tel:${p.tel}">${p.tel}</a>`
-      : "";
+    const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
     const popupHtml = `
       <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}${escapeHtml(p.ad)}</div>
       <div class="pop-meta">📏 ${formatDist(p._km)}</div>
@@ -420,80 +402,87 @@ function renderMap() {
   setTimeout(() => _mapInstance.invalidateSize(), 100);
 }
 
-function escapeHtml(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+// ---- Ortak akış: konum + eczaneler ----
+async function fetchAndRank() {
+  const loc = await getLocation();
+  setStatus("Bölgenizdeki nöbetçi eczaneler aranıyor...");
+  const resp = await getPharmaciesForLocation(loc.lat, loc.lng);
+  if (resp.error) throw new Error(resp.error);
+
+  const pharmacies = resp.pharmacies || resp;
+  const fallback = resp.fallback === true;
+  const districtName = resp.user_district_display;
+
+  const geo = (pharmacies || []).filter(p => p.lat && p.lng);
+  if (!geo.length) {
+    throw new Error("Bugün için koordinatlı nöbetçi eczane bulunamadı.");
+  }
+  geo.forEach(p => { p._km = haversineKm(loc.lat, loc.lng, p.lat, p.lng); });
+  geo.sort((a, b) => a._km - b._km);
+
+  _lastGeo = geo;
+  return { geo, fallback, districtName };
 }
 
-// ----- VIEW TOGGLE -----
-function showList() {
-  listToggleBtn.classList.add("active"); listToggleBtn.classList.remove("inactive");
-  mapToggleBtn.classList.add("inactive"); mapToggleBtn.classList.remove("active");
-  listView.classList.remove("hidden");
-  mapView.classList.add("hidden");
+function showStatusMsg(fallback, districtName) {
+  if (fallback) {
+    setStatus(districtName
+      ? `⚠️ ${districtName} bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum.`
+      : "⚠️ Bulunduğun ilçe tespit edilemedi. Tüm il listesini gösteriyorum.", true);
+  } else if (districtName) {
+    setStatus(`📍 ${districtName} bölgesi`);
+  } else {
+    setStatus("");
+  }
 }
-function showMap() {
-  listToggleBtn.classList.remove("active"); listToggleBtn.classList.add("inactive");
-  mapToggleBtn.classList.remove("inactive"); mapToggleBtn.classList.add("active");
-  listView.classList.add("hidden");
-  mapView.classList.remove("hidden");
-  renderMap();
-}
-listToggleBtn.addEventListener("click", showList);
-mapToggleBtn.addEventListener("click", showMap);
 
+// ---- LİSTE BUTONU ----
 findBtn.addEventListener("click", async () => {
   findBtn.disabled = true;
+  mapBtn.disabled = true;
   resultCard.classList.add("hidden");
   othersCard.classList.add("hidden");
-  viewToggle.classList.add("hidden");
   mapView.classList.add("hidden");
+  listView.classList.remove("hidden");
   setStatus("Konum alınıyor...");
-
   try {
-    const loc = await getLocation();
-    setStatus("Bölgenizdeki nöbetçi eczaneler aranıyor...");
-
-    const resp = await getPharmaciesForLocation(loc.lat, loc.lng);
-    if (resp.error) throw new Error(resp.error);
-
-    const pharmacies = resp.pharmacies || resp;
-    const fallback = resp.fallback === true;
-    const districtName = resp.user_district_display;
-
-    const geo = (pharmacies || []).filter(p => p.lat && p.lng);
-    if (!geo.length) {
-      setStatus("Bugün için koordinatlı nöbetçi eczane bulunamadı.", true);
-      return;
-    }
-
-    geo.forEach(p => {
-      p._km = haversineKm(loc.lat, loc.lng, p.lat, p.lng);
-    });
-    geo.sort((a, b) => a._km - b._km);
-
-    if (fallback) {
-      const msg = districtName
-        ? `⚠️ ${districtName} bölgesinde bugün nöbetçi eczane yok. Tüm il listesini gösteriyorum.`
-        : "⚠️ Bulunduğun ilçe tespit edilemedi. Tüm il listesini gösteriyorum.";
-      setStatus(msg, true);
-    } else if (districtName) {
-      setStatus(`📍 ${districtName} bölgesi`);
-    } else {
-      setStatus("");
-    }
-
-    _lastGeo = geo;
+    const { geo, fallback, districtName } = await fetchAndRank();
+    showStatusMsg(fallback, districtName);
     renderResult(geo[0], geo.slice(1));
-    viewToggle.classList.remove("hidden");
-    showList();
   } catch (e) {
     setStatus(e.message, true);
   } finally {
     findBtn.disabled = false;
+    mapBtn.disabled = false;
+  }
+});
+
+// ---- HARİTA BUTONU ----
+mapBtn.addEventListener("click", async () => {
+  findBtn.disabled = true;
+  mapBtn.disabled = true;
+  setStatus("Konum alınıyor...");
+  try {
+    const { geo, fallback, districtName } = await fetchAndRank();
+    showStatusMsg(fallback, districtName);
+    listView.classList.add("hidden");
+    mapView.classList.remove("hidden");
+    renderMap();
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    findBtn.disabled = false;
+    mapBtn.disabled = false;
+  }
+});
+
+// ---- LİSTEYE DÖN ----
+backToList.addEventListener("click", () => {
+  mapView.classList.add("hidden");
+  listView.classList.remove("hidden");
+  // Eğer önceden liste render edilmediyse render et
+  if (_lastGeo && resultCard.classList.contains("hidden")) {
+    renderResult(_lastGeo[0], _lastGeo.slice(1));
   }
 });
 </script>
