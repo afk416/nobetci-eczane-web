@@ -32,7 +32,7 @@ if not COLLECTAPI_TOKEN:
 
 # Cache: il_key -> {"ts": float, "data": list}
 _cache: dict = {}
-_CACHE_TTL = 1800  # 30 dk
+_CACHE_TTL = 900  # 15 dk (CollectAPI gün başı yavaş güncelleyebiliyor, sık kontrol)
 
 # Geriye dönük uyumluluk: bot.py bu sabiti import ediyor
 DISTRICT_NORMALIZE = {
