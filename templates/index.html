@@ -4,8 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>En Yakın Nöbetçi Eczaneler — Nobetcim</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
 <style>
   :root {
     --bg: #f4f7fa;
@@ -220,23 +219,26 @@
     width: 100%;
     border-radius: 14px;
   }
-  .leaflet-popup-content {
+  .maplibregl-popup-content {
     font-family: inherit;
     font-size: 14px;
     line-height: 1.45;
     min-width: 200px;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
   }
-  .leaflet-popup-content .pop-name {
+  .maplibregl-popup-content .pop-name {
     font-weight: 700;
     color: var(--accent-dark);
     margin-bottom: 4px;
     font-size: 15px;
   }
-  .leaflet-popup-content .pop-meta {
+  .maplibregl-popup-content .pop-meta {
     color: var(--muted);
     font-size: 12.5px;
   }
-  .leaflet-popup-content a { color: var(--accent); font-weight: 600; }
+  .maplibregl-popup-content a { color: var(--accent); font-weight: 600; }
 
   /* Geri dönüş butonu (harita modunda) */
   #backToList {
@@ -304,8 +306,7 @@
   </footer>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const findBtn = $("findBtn");
@@ -318,7 +319,9 @@ const listView = $("listView");
 const resultCard = $("resultCard");
 const othersCard = $("othersCard");
 
+const OFM_STYLE = "https://tiles.openfreemap.org/styles/liberty";  // ücretsiz, anahtarsız vektör harita
 let _mapInstance = null;
+let _markers = [];
 let _lastGeo = null;
 let _lastLoc = null;
 
@@ -453,45 +456,54 @@ function renderResult(nearest, others) {
   }
 }
 
-// ---- Harita ikon yardımcıları ----
-function makePharmacyIcon(isNearest) {
+// ---- Harita ikon yardımcıları (MapLibre marker = DOM element) ----
+function makePharmacyEl(isNearest) {
   const color = isNearest ? "#e8762a" : "#246b8f";
   const size = isNearest ? 38 : 30;
-  const svg = `
+  const el = document.createElement("div");
+  el.style.cursor = "pointer";
+  el.innerHTML = `
     <svg width="${size}" height="${size}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <path d="M16 2C9 2 4 7 4 14c0 9 12 16 12 16s12-7 12-16c0-7-5-12-12-12z"
             fill="${color}" stroke="white" stroke-width="2"/>
       <circle cx="16" cy="13" r="6" fill="white"/>
       <path d="M13 13h6M16 10v6" stroke="${color}" stroke-width="2.4" stroke-linecap="round"/>
     </svg>`;
-  return L.divIcon({ className:"", html: svg, iconSize:[size,size], iconAnchor:[size/2,size] });
+  return el;
 }
-function makeUserIcon() {
-  const html = `<div style="
-    width:18px;height:18px;background:#2563eb;border-radius:50%;
-    border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3);"></div>`;
-  return L.divIcon({ className:"", html, iconSize:[18,18], iconAnchor:[9,9] });
+function makeUserEl() {
+  const el = document.createElement("div");
+  el.style.cssText =
+    "width:18px;height:18px;background:#2563eb;border-radius:50%;" +
+    "border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3);";
+  return el;
 }
 
 function renderMap() {
   if (!_lastGeo || !_lastLoc) return;
   if (!_mapInstance) {
-    _mapInstance = L.map("map", { scrollWheelZoom: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(_mapInstance);
-  } else {
-    _mapInstance.eachLayer(l => {
-      if (l instanceof L.Marker) _mapInstance.removeLayer(l);
+    _mapInstance = new maplibregl.Map({
+      container: "map",
+      style: OFM_STYLE,
+      center: [_lastLoc.lng, _lastLoc.lat],
+      zoom: 13,
+      attributionControl: { compact: true },
     });
+    _mapInstance.addControl(new maplibregl.NavigationControl(), "top-right");
+    _mapInstance.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
+  } else {
+    _markers.forEach(m => m.remove());
   }
+  _markers = [];
 
-  L.marker([_lastLoc.lat, _lastLoc.lng], { icon: makeUserIcon(), zIndexOffset: 1000 })
-    .addTo(_mapInstance)
-    .bindPopup("📍 Buradasın");
+  const userMarker = new maplibregl.Marker({ element: makeUserEl(), anchor: "center" })
+    .setLngLat([_lastLoc.lng, _lastLoc.lat])
+    .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML("📍 Buradasın"))
+    .addTo(_mapInstance);
+  _markers.push(userMarker);
 
-  const bounds = [[_lastLoc.lat, _lastLoc.lng]];
+  const bounds = new maplibregl.LngLatBounds();
+  bounds.extend([_lastLoc.lng, _lastLoc.lat]);
   _lastGeo.forEach((p, i) => {
     const isNearest = i === 0;
     const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
@@ -502,14 +514,16 @@ function renderMap() {
       <div style="margin-top:6px;">${phoneHtml}</div>
       <div style="margin-top:4px;"><a href="${dirUrl(p)}" target="_blank" rel="noopener">🗺️ Yol tarifi al</a></div>
     `;
-    L.marker([p.lat, p.lng], { icon: makePharmacyIcon(isNearest), zIndexOffset: isNearest ? 500 : 0 })
-      .addTo(_mapInstance)
-      .bindPopup(popupHtml);
-    bounds.push([p.lat, p.lng]);
+    const m = new maplibregl.Marker({ element: makePharmacyEl(isNearest), anchor: "bottom" })
+      .setLngLat([p.lng, p.lat])
+      .setPopup(new maplibregl.Popup({ offset: isNearest ? 34 : 26 }).setHTML(popupHtml))
+      .addTo(_mapInstance);
+    _markers.push(m);
+    bounds.extend([p.lng, p.lat]);
   });
 
-  _mapInstance.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-  setTimeout(() => _mapInstance.invalidateSize(), 100);
+  _mapInstance.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
+  setTimeout(() => _mapInstance.resize(), 120);
 }
 
 // ---- Ortak akış: konum + eczaneler ----
