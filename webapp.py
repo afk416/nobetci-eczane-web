@@ -19,6 +19,16 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/gizlilik")
+def gizlilik():
+    return render_template("gizlilik.html")
+
+
+@app.route("/kullanim")
+def kullanim():
+    return render_template("kullanim.html")
+
+
 @app.route("/healthz")
 def healthz():
     return {"status": "ok"}, 200

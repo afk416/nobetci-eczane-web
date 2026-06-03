@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kullanım Şartları — Nobetcim</title>
+<style>
+  :root {
+    --bg: #f4f7fa;
+    --card: #ffffff;
+    --accent: #246b8f;
+    --accent-dark: #1a536e;
+    --text: #1f2d3a;
+    --muted: #677889;
+    --border: #e2e8ef;
+    --warn-bg: #fff3cd;
+    --warn-border: #ffc107;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px 16px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { color: var(--accent); margin: 0 0 4px; font-size: 26px; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  h2 { color: var(--accent-dark); font-size: 18px; margin-top: 26px; }
+  h2:first-of-type { margin-top: 0; }
+  p, ul { font-size: 15px; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  .back { display: inline-block; margin-bottom: 14px; color: var(--accent); text-decoration: none; }
+  .back:hover { text-decoration: underline; }
+  .meta {
+    background: #e7f1f7;
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--accent-dark);
+    margin-bottom: 20px;
+  }
+  .warn {
+    background: var(--warn-bg);
+    border-left: 4px solid var(--warn-border);
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 20px 0;
+    font-size: 15px;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Kullanım Şartları</h1>
+    <div class="sub">Nobetcim — Nöbetçi Eczane Bulma Hizmeti</div>
+  </header>
+
+  <div class="card">
+    <a class="back" href="/">← Ana sayfaya dön</a>
+
+    <div class="meta">
+      <strong>Yürürlük Tarihi:</strong> 3 Haziran 2026<br>
+      <strong>Son Güncelleme:</strong> 3 Haziran 2026
+    </div>
+
+    <h2>1. Hizmetin Kapsamı</h2>
+    <p>
+      Nobetcim, Türkiye genelindeki nöbetçi eczane bilgisini bulunduğunuz konuma
+      göre listeleyen <strong>ücretsiz</strong> bir bilgilendirme hizmetidir.
+      Web sitesi (<code>nobetcim.com.tr</code>) ve Telegram botu
+      (<code>@kahramanmarasnobetcieczane_bot</code>) üzerinden sunulur.
+    </p>
+
+    <div class="warn">
+      ⚠️ <strong>ACİL DURUM UYARISI:</strong> Hayati tehlikeli bir durum yaşıyorsanız
+      derhal <strong>112 Acil Çağrı Merkezi'ni</strong> arayın. Nobetcim acil sağlık
+      hizmetinin yerine geçmez.
+    </div>
+
+    <h2>2. Verilerin Doğruluğu</h2>
+    <p>
+      Nobetcim eczane verilerini üçüncü taraf API'lerinden (CollectAPI) ve resmi belediye
+      kaynaklarından alır. <strong>%100 doğruluk garanti edilmez</strong>; veriler
+      güncel olmayabilir, hatalı veya eksik olabilir. Eczaneye gitmeden önce mümkünse
+      telefonla teyit etmeniz önerilir.
+    </p>
+
+    <h2>3. Sorumluluk Reddi</h2>
+    <p>Nobetcim, aşağıdaki durumlardan sorumlu tutulamaz:</p>
+    <ul>
+      <li>Gösterilen eczane bilgisinin yanlış ya da eksik olması,</li>
+      <li>Eczanenin kapalı olması veya hizmet vermemesi,</li>
+      <li>Servisin geçici olarak erişilemez olması (kesinti, bakım),</li>
+      <li>Üçüncü taraf API'lerin (CollectAPI vb.) hizmet kesintisi,</li>
+      <li>Konum doğrulamasının teknik nedenlerle hatalı olması,</li>
+      <li>Tıbbi karar veya tedavi sonuçları (bu bilgilendirme amaçlı bir hizmettir, tıbbi tavsiye değildir).</li>
+    </ul>
+
+    <h2>4. Kabul Edilen Kullanım</h2>
+    <p>Nobetcim'i kullanırken:</p>
+    <ul>
+      <li>Hizmeti yasal amaçlarla kullanmayı kabul edersiniz,</li>
+      <li>Sistemin otomatik araçlarla (bot, scraper) kötüye kullanılmaması gerekir,</li>
+      <li>Sunucuya aşırı yük bindirmemek, makul sıklıkta sorgu yapmak esastır.</li>
+    </ul>
+
+    <h2>5. Fikri Mülkiyet</h2>
+    <p>
+      Sitenin tasarımı, kod tabanı ve "Nobetcim" markası Ahmet Furkan Ege'ye aittir.
+      Site kaynak kodunun bir kısmı (GitHub'da yayınlanan) açık kaynak lisansı altında olabilir.
+      Eczane bilgileri kamuya açık verilerdir ve marka tarafından üretilmemiştir.
+    </p>
+
+    <h2>6. Ücretlendirme</h2>
+    <p>
+      Hizmet şu an <strong>tamamen ücretsizdir</strong>. Reklam veya premium abonelik
+      eklenmesi durumunda bu şartlar güncellenir ve sitede ilan edilir.
+    </p>
+
+    <h2>7. Hizmetin Kesintiye Uğraması</h2>
+    <p>
+      Nobetcim, herhangi bir bildirim yapmaksızın hizmeti geçici veya kalıcı olarak
+      durdurma hakkını saklı tutar. Sunucu sorunları, üçüncü taraf veri kaynağı
+      kesintileri ve benzeri durumlarda hizmet aksaklığı yaşanabilir.
+    </p>
+
+    <h2>8. Gizlilik</h2>
+    <p>
+      Kişisel verilerinizin işlenmesi ile ilgili detaylı bilgi için
+      <a href="/gizlilik">Gizlilik Politikası</a> sayfasına bakınız.
+    </p>
+
+    <h2>9. Şartlardaki Değişiklikler</h2>
+    <p>
+      Bu Kullanım Şartları herhangi bir zamanda güncellenebilir. Değişiklikler sitede
+      yayınlandığı tarihten itibaren yürürlüğe girer. Hizmeti kullanmaya devam etmeniz,
+      güncellenmiş şartları kabul ettiğiniz anlamına gelir.
+    </p>
+
+    <h2>10. Uygulanacak Hukuk ve Yetkili Mahkeme</h2>
+    <p>
+      Bu Kullanım Şartları Türkiye Cumhuriyeti yasalarına tabidir. Uyuşmazlık halinde
+      Kahramanmaraş Mahkemeleri ve İcra Daireleri yetkilidir.
+    </p>
+
+    <h2>11. İletişim</h2>
+    <p>
+      Sorularınız için: <a href="mailto:afk416@gmail.com">afk416@gmail.com</a>
+    </p>
+  </div>
+
+  <footer>
+    <a href="/">← Ana Sayfa</a> · <a href="/gizlilik">Gizlilik Politikası</a>
+  </footer>
+</div>
+</body>
+</html>

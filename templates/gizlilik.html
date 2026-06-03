@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gizlilik Politikası — Nobetcim</title>
+<style>
+  :root {
+    --bg: #f4f7fa;
+    --card: #ffffff;
+    --accent: #246b8f;
+    --accent-dark: #1a536e;
+    --text: #1f2d3a;
+    --muted: #677889;
+    --border: #e2e8ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px 16px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { color: var(--accent); margin: 0 0 4px; font-size: 26px; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  h2 { color: var(--accent-dark); font-size: 18px; margin-top: 26px; }
+  h2:first-child { margin-top: 0; }
+  p, ul { font-size: 15px; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 24px;
+  }
+  .back { display: inline-block; margin-bottom: 14px; color: var(--accent); text-decoration: none; }
+  .back:hover { text-decoration: underline; }
+  .meta {
+    background: #e7f1f7;
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--accent-dark);
+    margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Gizlilik Politikası</h1>
+    <div class="sub">Nobetcim — Nöbetçi Eczane Bulma Hizmeti</div>
+  </header>
+
+  <div class="card">
+    <a class="back" href="/">← Ana sayfaya dön</a>
+
+    <div class="meta">
+      <strong>Yürürlük Tarihi:</strong> 3 Haziran 2026<br>
+      <strong>Son Güncelleme:</strong> 3 Haziran 2026
+    </div>
+
+    <h2>1. Veri Sorumlusu</h2>
+    <p>
+      <strong>Ahmet Furkan Ege</strong> (bireysel) — nobetcim.com.tr internet sitesinin
+      ve <code>@kahramanmarasnobetcieczane_bot</code> Telegram botunun sahibidir.
+      İletişim: <a href="mailto:afk416@gmail.com">afk416@gmail.com</a>
+    </p>
+
+    <h2>2. Toplanan Veriler ve Amaçları</h2>
+    <p>Nobetcim aşağıdaki verileri <strong>yalnızca size hizmet sunmak için</strong> işler:</p>
+    <ul>
+      <li>
+        <strong>Konum bilgisi (enlem/boylam)</strong> — Tarayıcınızdan veya Telegram
+        uygulamasından "konum paylaş" izni vermenizle alınır.
+        <em>Amaç:</em> Bulunduğunuz ilçeyi tespit edip en yakın nöbetçi eczaneyi listelemek.
+        <em>Saklama:</em> Sunucularımıza kaydedilmez; istek sonunda silinir.
+      </li>
+      <li>
+        <strong>IP adresi (anonim)</strong> — Cloudflare CDN tarafından otomatik işlenir.
+        <em>Amaç:</em> Güvenlik (DDoS koruması) ve toplu trafik istatistikleri.
+        <em>Saklama:</em> Bireysel kayıt tutulmaz, sadece toplu sayım.
+      </li>
+      <li>
+        <strong>Telegram kullanıcı ID'si</strong> — Telegram botla yazıştığınızda Telegram
+        tarafından bota iletilir.
+        <em>Amaç:</em> Botun size cevap verebilmesi.
+        <em>Saklama:</em> Botumuz bu bilgiyi kaydetmez; mesaj işlendikten sonra silinir.
+      </li>
+    </ul>
+
+    <h2>3. Üçüncü Taraflar</h2>
+    <p>Nobetcim aşağıdaki üçüncü taraf hizmetleri kullanır:</p>
+    <ul>
+      <li><strong>CollectAPI</strong> — Nöbetçi eczane verilerinin kaynağı (sorgu için sadece il bilgisi gönderilir, kişisel veri gönderilmez).</li>
+      <li><strong>Nominatim (OpenStreetMap)</strong> — Koordinatınızı ilçe adına çevirmek için (sorgu sonunda silinir).</li>
+      <li><strong>Cloudflare</strong> — CDN, güvenlik, DNS hizmetleri.</li>
+      <li><strong>Telegram Bot API</strong> — Telegram botu çalıştırma altyapısı.</li>
+      <li><strong>Google Maps</strong> — Eczane konumlarını harita üzerinde göstermek için (link açıldığında).</li>
+    </ul>
+
+    <h2>4. Çerezler</h2>
+    <p>
+      Nobetcim kendi çerezini kullanmaz. Cloudflare güvenlik altyapısı kapsamında geçici
+      teknik çerezler kullanılabilir (DDoS koruması için, kişisel takip amaçlı değil).
+    </p>
+
+    <h2>5. KVKK Kapsamındaki Haklarınız</h2>
+    <p>6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 11. maddesi uyarınca:</p>
+    <ul>
+      <li>Kişisel verilerinizin işlenip işlenmediğini öğrenme,</li>
+      <li>İşlenmişse buna ilişkin bilgi talep etme,</li>
+      <li>Verilerin silinmesini veya yok edilmesini isteme,</li>
+      <li>İşlemenin Kanun'a aykırı olduğunu düşünüyorsanız Kişisel Verileri Koruma Kurulu'na şikayette bulunma
+      hakkına sahipsiniz.</li>
+    </ul>
+    <p>
+      Taleplerinizi <a href="mailto:afk416@gmail.com">afk416@gmail.com</a> adresine
+      iletebilirsiniz. 30 gün içinde yanıt verilir.
+    </p>
+
+    <h2>6. Çocukların Gizliliği</h2>
+    <p>
+      Nobetcim 13 yaşın altındaki kullanıcılardan bilinçli olarak veri toplamaz.
+      Çocukların ebeveynleri/velileri kontrolünde hizmeti kullanması beklenir.
+    </p>
+
+    <h2>7. Veri Güvenliği</h2>
+    <p>
+      Site bağlantıları HTTPS (SSL/TLS) ile şifrelenir. Sunucular Almanya'da
+      bulunmaktadır. Yetkisiz erişimi önlemek için Cloudflare DDoS koruması ve firewall kullanılır.
+    </p>
+
+    <h2>8. Politika Değişiklikleri</h2>
+    <p>
+      Bu politika güncellenebilir. Önemli değişiklikler sitede ilan edilir. Politikayı
+      düzenli olarak gözden geçirmeniz önerilir.
+    </p>
+
+    <h2>9. İletişim</h2>
+    <p>
+      Soru, talep veya şikayetleriniz için: <a href="mailto:afk416@gmail.com">afk416@gmail.com</a>
+    </p>
+  </div>
+
+  <footer>
+    <a href="/">← Ana Sayfa</a> · <a href="/kullanim">Kullanım Şartları</a>
+  </footer>
+</div>
+</body>
+</html>
