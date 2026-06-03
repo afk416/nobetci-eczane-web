@@ -102,6 +102,26 @@
       transform: scale(1.06);
     }
   }
+  /* Eczane ismi önündeki küçük E rozeti (tabela tarzı) */
+  .e-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15em;
+    height: 1.15em;
+    background: #d32f2f;
+    color: #fff;
+    font-weight: 900;
+    font-size: 0.82em;
+    line-height: 1;
+    letter-spacing: -0.5px;
+    border-radius: 4px;
+    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+    margin-right: 7px;
+    vertical-align: baseline;
+    flex: 0 0 auto;
+    padding-bottom: 1px;
+  }
   @media (prefers-reduced-motion: reduce) {
     .e-logo { animation: none; }
     .result { animation: none; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 10px 1px rgba(22,163,74,0.12); }
@@ -160,18 +180,20 @@
 
   /* En yakın eczane kartı: hafif yeşil zemin + nazik nabız gibi parlama */
   .result {
-    background: linear-gradient(180deg, #d2f0dc 0%, #effaf3 75%);
-    border-color: #8fd3a4;
-    animation: nearestGlow 3.4s ease-in-out infinite;
+    background: rgba(22, 163, 74, 0.42);
+    border-color: #5cbf80;
+    animation: fadeIn 0.5s ease both, nearestGlow 3.4s ease-in-out infinite;
   }
   @keyframes nearestGlow {
     0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 4px 0 rgba(22,163,74,0.14); }
     50%      { box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 18px 3px rgba(22,163,74,0.34); }
   }
-  /* Mobilde en yakın kartı daha da yeşil (temel kuraldan sonra ki kazansın) */
-  @media (max-width: 480px) {
-    .result { background: linear-gradient(180deg, #bfeacd 0%, #e4f7eb 78%); border-color: #79c692; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
+  /* Diğer eczaneler kartı da görünürken yumuşakça belirir */
+  .others { animation: fadeIn 0.5s ease both; }
 
   .result h2 { margin: 0 0 6px; font-size: 18px; color: var(--accent); }
   .result .distance {
@@ -416,7 +438,7 @@ function getLocation() {
 }
 
 function renderResult(nearest, others) {
-  $("pName").textContent = nearest.ad + (nearest.ilce ? " (" + nearest.ilce + ")" : "");
+  $("pName").innerHTML = '<span class="e-badge">E</span>' + escapeHtml(nearest.ad + (nearest.ilce ? " (" + nearest.ilce + ")" : ""));
   $("pDistance").textContent = "📏 " + formatDist(nearest._km);
   $("pAddress").textContent = nearest.adres || "-";
   const phoneLink = $("pPhone");
@@ -437,7 +459,7 @@ function renderResult(nearest, others) {
       const li = document.createElement("li");
       const name = document.createElement("div");
       name.className = "name";
-      name.textContent = p.ad + (p.ilce ? " (" + p.ilce + ")" : "");
+      name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(p.ad + (p.ilce ? " (" + p.ilce + ")" : ""));
       const meta = document.createElement("div");
       meta.className = "meta";
       const distSpan = document.createElement("span");
@@ -527,7 +549,7 @@ function renderMap() {
     const isNearest = i === 0;
     const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
     const popupHtml = `
-      <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}${escapeHtml(p.ad)}</div>
+      <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}<span class="e-badge">E</span>${escapeHtml(p.ad)}</div>
       <div class="pop-meta">📏 ${formatDist(p._km)}</div>
       <div class="pop-meta">${escapeHtml(p.adres || "-")}</div>
       <div style="margin-top:6px;">${phoneHtml}</div>
