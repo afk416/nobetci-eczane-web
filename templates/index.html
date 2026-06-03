@@ -37,32 +37,34 @@
     margin-bottom: 20px;
   }
   header h1 {
-    margin: 0 0 10px;
-    font-size: 24px;
+    margin: 0 0 12px;
     color: var(--accent);
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1.05;
+    letter-spacing: 0.4px;
+    text-align: center;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  .title-line {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    flex-wrap: nowrap;
-    letter-spacing: 0.3px;
-    font-weight: 800;
-    text-transform: uppercase;
-    line-height: 1.1;
+    gap: 8px;
     white-space: nowrap;
   }
-  .logo-text {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    white-space: nowrap;
-  }
-  header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+  .title-line-1 { font-size: 36px; }
+  .title-line-2 { font-size: 30px; margin-top: 6px; }
+  header p { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
   @media (max-width: 480px) {
-    header h1 { font-size: 18px; gap: 4px; }
-    .e-logo { width: 56px; height: 56px; font-size: 42px; }
+    .title-line-1 { font-size: 28px; }
+    .title-line-2 { font-size: 22px; }
+    .e-logo { width: 64px; height: 64px; font-size: 46px; }
   }
   @media (max-width: 360px) {
-    header h1 { font-size: 16px; }
-    .e-logo { width: 48px; height: 48px; font-size: 36px; }
+    .title-line-1 { font-size: 24px; }
+    .title-line-2 { font-size: 19px; }
+    .e-logo { width: 54px; height: 54px; font-size: 40px; }
   }
 
   /* Parlayan/sönen kırmızı E logosu (eczane tabelası tarzı) */
@@ -240,7 +242,11 @@
 <div class="app">
   <header>
     <h1>
-      <span class="e-logo" aria-hidden="true">E</span><span class="logo-text">N YAKIN NÖBETÇİ ECZANELER</span>
+      <span class="title-line title-line-1">
+        <span class="e-logo" aria-hidden="true">E</span>
+        <span>N YAKIN</span>
+      </span>
+      <span class="title-line title-line-2">NÖBETÇİ ECZANELER</span>
     </h1>
     <p>Konumunu paylaş, sana en yakın nöbetçi eczaneyi bulalım.</p>
   </header>
