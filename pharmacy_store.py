@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS scrape_log (
     scraped_at TEXT    NOT NULL,
     PRIMARY KEY (duty_date, plate_code)
 );
+
+-- Adres→koordinat önbelleği (koordinatsız oda siteleri için Nominatim
+-- sonuçları; her scrape turunda yeniden geocode etmemek için kalıcı).
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    query_key TEXT PRIMARY KEY,
+    lat       REAL,
+    lng       REAL
+);
 """
 
 
@@ -141,6 +149,29 @@ def province_count(duty_date: str, plate_code: int | str) -> int:
         )
         row = cur.fetchone()
         return int(row["count"]) if row else -1
+
+
+def geocode_get(query_key: str) -> tuple[float, float] | None:
+    """Önbellekten adres→koordinat döner (yoksa None)."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT lat, lng FROM geocode_cache WHERE query_key = ?", (query_key,)
+        )
+        row = cur.fetchone()
+        if row and row["lat"] is not None:
+            return float(row["lat"]), float(row["lng"])
+        return None
+
+
+def geocode_put(query_key: str, lat: float | None, lng: float | None) -> None:
+    """Adres→koordinat önbelleğe yazar (başarısız geocode'lar None olarak da
+    kaydedilir; böylece her turda boşuna tekrar denenmez)."""
+    with _write_lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO geocode_cache (query_key, lat, lng) VALUES (?,?,?) "
+            "ON CONFLICT(query_key) DO UPDATE SET lat=excluded.lat, lng=excluded.lng",
+            (query_key, lat, lng),
+        )
 
 
 def prune_old(keep_dates: list[str]) -> int:

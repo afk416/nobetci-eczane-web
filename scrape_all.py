@@ -17,6 +17,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import chamber_scraper as chamber
 import pharmacy_store as store
 from provinces import ALL_PLATE_CODES, PLATE_CITY, district_key
 from titck_scraper import TitckSession
@@ -25,6 +26,11 @@ logger = logging.getLogger("scrape_all")
 
 TURKEY_TZ = timezone(timedelta(hours=3))
 PROVINCE_DELAY = 2.5   # iller arası nazik gecikme (saniye) — throttle'ı tetiklememek için
+CHAMBER_DELAY = 2.0    # oda siteleri arası nazik gecikme
+
+# TİTCK'e veri beslemeyen 20 il: eczacı odası sitelerinden çekilir.
+# 27 (Gaziantep) ve 79 (Kilis) Eflatunweb (gaziantepeo.org.tr), kalanı OBEN.
+CHAMBER_PLATES = set(chamber.CHAMBER_SOURCES) | {27, 79}
 
 
 def active_duty_dates() -> list[str]:
@@ -85,6 +91,56 @@ def scrape_for_date(
     return ok, fail
 
 
+def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int, int]:
+    """Eczacı odası kaynaklı 20 ili çekip depoya yazar (TODAY-only).
+
+    Koordinatsız sitelerin (Malatya, Gaziantep, Kilis) eczaneleri Nominatim
+    ile geocode edilir (sonuç önbelleğe alınır).
+    """
+    done = set() if force else store.completed_plates(duty_iso)
+    targets = [p for p in plates if p in CHAMBER_PLATES and p not in done]
+    logger.info("Oda kaynakları (%s): %d il bekliyor, %d atlandı",
+                duty_iso, len(targets), len(CHAMBER_PLATES & set(plates)) - len(targets))
+
+    ok = fail = 0
+    for i, plate in enumerate(targets, 1):
+        city = PLATE_CITY[plate]
+        try:
+            if plate in (27, 79):
+                res = chamber.scrape_gaziantep_eo(str(plate), want_kilis=(plate == 79))
+            else:
+                info = chamber.CHAMBER_SOURCES[plate]
+                res = chamber.scrape_chamber(
+                    info["url"], city, str(plate), multi=info.get("multi", False)
+                )
+        except Exception:
+            logger.exception("[%d/%d] oda %s (%d) HATA", i, len(targets), city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        if not res.success:
+            logger.warning("[%d/%d] oda %s (%d) başarısız", i, len(targets), city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        # koordinatsız eczaneleri geocode et (önbellekli)
+        if any(p.get("lat") is None for p in res.pharmacies):
+            chamber.geocode_pharmacies(res.pharmacies, city)
+        for ph in res.pharmacies:
+            ph["district_key"] = district_key(ph.get("district", ""))
+
+        with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
+        store.save_province(duty_iso, plate, city, res.pharmacies)
+        logger.info("[%d/%d] oda %s (%d): %d eczane (%d koordinatlı) %.1fs",
+                    i, len(targets), city, plate, len(res.pharmacies), with_coords, res.took)
+        ok += 1
+        time.sleep(CHAMBER_DELAY)
+
+    return ok, fail
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true", help="tümünü yeniden çek")
@@ -109,12 +165,21 @@ def main() -> int:
         dates = dates[:1]
 
     started = time.time()
-    session = TitckSession()
     total_ok = total_fail = 0
-    for date_str in dates:
-        ok, fail = scrape_for_date(session, date_str, plates, args.force)
-        total_ok += ok
-        total_fail += fail
+
+    # TİTCK illeri (oda kaynaklı 20 il hariç) — bugün + yarın
+    titck_plates = [p for p in plates if p not in CHAMBER_PLATES]
+    if titck_plates:
+        session = TitckSession()
+        for date_str in dates:
+            ok, fail = scrape_for_date(session, date_str, titck_plates, args.force)
+            total_ok += ok
+            total_fail += fail
+
+    # Eczacı odası illeri — sadece bugün (siteler TODAY-only)
+    chamber_ok, chamber_fail = scrape_chambers(iso_date(dates[0]), plates, args.force)
+    total_ok += chamber_ok
+    total_fail += chamber_fail
 
     # Eski nöbet günlerini temizle (aktif günleri tut)
     keep = [iso_date(d) for d in dates]
