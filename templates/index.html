@@ -288,7 +288,7 @@
       <span class="distance" id="pDistance"></span>
       <div class="row"><span class="ico">📍</span><span id="pAddress"></span></div>
       <div class="row"><span class="ico">📞</span><a id="pPhone" href="#"></a></div>
-      <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Google Maps'te aç</a></div>
+      <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Yol tarifi al</a></div>
     </div>
 
     <div id="othersCard" class="card others hidden">
@@ -339,6 +339,13 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 function formatDist(km) {
   if (km < 1) return Math.round(km * 1000) + " m";
   return km.toFixed(2) + " km";
+}
+// Google Maps yol tarifi (kullanıcı konumundan eczaneye)
+function dirUrl(p) {
+  if (p && p.lat != null && p.lng != null) {
+    return "https://www.google.com/maps/dir/?api=1&destination=" + p.lat + "," + p.lng;
+  }
+  return (p && p.harita) || "#";
 }
 function escapeHtml(s) {
   return String(s || "")
@@ -397,7 +404,7 @@ function renderResult(nearest, others) {
     phoneLink.textContent = "-";
     phoneLink.removeAttribute("href");
   }
-  $("pMap").href = nearest.harita || "#";
+  $("pMap").href = dirUrl(nearest);
   resultCard.classList.remove("hidden");
 
   const othersList = $("othersList");
@@ -421,10 +428,10 @@ function renderResult(nearest, others) {
       if (p.harita) {
         const mapA = document.createElement("a");
         mapA.className = "act";
-        mapA.href = p.harita;
+        mapA.href = dirUrl(p);
         mapA.target = "_blank";
         mapA.rel = "noopener";
-        mapA.innerHTML = "🗺️ <span>Harita</span>";
+        mapA.innerHTML = "🗺️ <span>Yol tarifi al</span>";
         actions.appendChild(mapA);
       }
       if (p.tel) {
@@ -492,7 +499,7 @@ function renderMap() {
       <div class="pop-meta">📏 ${formatDist(p._km)}</div>
       <div class="pop-meta">${escapeHtml(p.adres || "-")}</div>
       <div style="margin-top:6px;">${phoneHtml}</div>
-      <div style="margin-top:4px;"><a href="${p.harita}" target="_blank" rel="noopener">🗺️ Yol tarifi</a></div>
+      <div style="margin-top:4px;"><a href="${dirUrl(p)}" target="_blank" rel="noopener">🗺️ Yol tarifi al</a></div>
     `;
     L.marker([p.lat, p.lng], { icon: makePharmacyIcon(isNearest), zIndexOffset: isNearest ? 500 : 0 })
       .addTo(_mapInstance)
