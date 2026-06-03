@@ -13,3 +13,11 @@ collectapi_token.txt
 .collectapi_token
 .token
 secrets/
+
+# Yerel SQLite eczane deposu (scrape ile üretilir)
+*.db
+*.db-wal
+*.db-shm
+
+# Editör/araç artıkları
+.claude/
