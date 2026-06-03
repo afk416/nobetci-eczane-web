@@ -10,7 +10,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 TURKEY_TZ = timezone(timedelta(hours=3))
-DAILY_REFRESH_HOUR = 9  # Eczaneler TR saatiyle 09:00'da değişiyor
+# Eczaneler TR saatiyle 08:30'da değişiyor (kullanıcı onayı)
+DAILY_REFRESH_HOUR = 8
+DAILY_REFRESH_MINUTE = 30
 
 # CollectAPI ayarları (token önce env, sonra lokal dosya)
 COLLECTAPI_URL = "https://api.collectapi.com/health/dutyPharmacy"
@@ -144,10 +146,13 @@ def _transform(item: dict) -> dict:
 
 
 def _last_refresh_boundary_ts() -> float:
-    """En son geçilen 09:00 (TR) anının unix timestamp'i."""
+    """En son geçilen 08:30 (TR) anının unix timestamp'i."""
     now_tr = datetime.now(TURKEY_TZ)
     boundary = now_tr.replace(
-        hour=DAILY_REFRESH_HOUR, minute=0, second=0, microsecond=0
+        hour=DAILY_REFRESH_HOUR,
+        minute=DAILY_REFRESH_MINUTE,
+        second=0,
+        microsecond=0,
     )
     if now_tr < boundary:
         boundary -= timedelta(days=1)
