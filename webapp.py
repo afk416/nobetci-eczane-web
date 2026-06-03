@@ -100,7 +100,7 @@ def api_pharmacies():
     try:
         all_data = fetch_pharmacies(target_il)
     except Exception as e:
-        logger.exception("CollectAPI hatası (il=%s)", target_il)
+        logger.exception("Eczane verisi alınamadı (il=%s)", target_il)
         return jsonify({"error": f"Eczane verisi alınamadı: {e}"}), 500
 
     # 3) İlçe farketmeksizin ildeki tüm nöbetçi eczaneleri döner;

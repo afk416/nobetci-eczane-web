@@ -59,6 +59,9 @@
     .title-line-1 { font-size: 28px; }
     .title-line-2 { font-size: 22px; }
     .e-logo { width: 48px; height: 48px; font-size: 34px; }
+    /* Butonları dikey yığ: ana buton tam genişlik, harita butonu kompakt */
+    .btn-row { flex-direction: column; }
+    .btn-map { align-self: center; padding: 10px 18px; }
   }
   @media (max-width: 360px) {
     .title-line-1 { font-size: 24px; }
@@ -269,15 +272,15 @@
   <!-- ANA BUTON BÖLGESİ -->
   <div id="mainCard" class="card">
     <div class="btn-row">
-      <button id="findBtn" class="btn-primary">📍 Bana en yakın nöbetçi eczaneyi bul</button>
-      <button id="mapBtn" class="btn-map" title="Haritada gör">🗺️ Haritada gör</button>
+      <button id="findBtn" class="btn-primary">📍 Bana En Yakın Nöbetçi Eczaneyi Bul</button>
+      <button id="mapBtn" class="btn-map" title="Haritada Gör">🗺️ Haritada Gör</button>
     </div>
     <div id="status" class="status"></div>
   </div>
 
   <!-- HARİTA MODU -->
   <div id="mapView" class="hidden">
-    <button id="backToList">← Listeye dön</button>
+    <button id="backToList">← Listeye Dön</button>
     <div id="mapCard" class="card">
       <div id="map"></div>
     </div>
@@ -300,7 +303,7 @@
   </div>
 
   <footer>
-    Veri kaynağı: CollectAPI ·
+    Veri kaynağı: TİTCK (e-Devlet) ve İl Eczacı Odaları ·
     <a href="/gizlilik">Gizlilik</a> ·
     <a href="/kullanim">Kullanım Şartları</a>
   </footer>
