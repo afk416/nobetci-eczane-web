@@ -192,6 +192,7 @@
   .others li:first-child { border-top: none; }
   .others .name { font-weight: 600; }
   .others .meta { color: var(--muted); font-size: 13px; }
+  .others .dist { color: #16a34a; font-size: 15px; font-weight: 700; }
   .others .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .others .act {
     display: inline-flex; align-items: center; gap: 4px;
@@ -409,7 +410,11 @@ function renderResult(nearest, others) {
       name.textContent = p.ad + (p.ilce ? " (" + p.ilce + ")" : "");
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = formatDist(p._km) + " • " + (p.adres || "-");
+      const distSpan = document.createElement("span");
+      distSpan.className = "dist";
+      distSpan.textContent = formatDist(p._km);
+      meta.appendChild(distSpan);
+      meta.appendChild(document.createTextNode(" • " + (p.adres || "-")));
 
       const actions = document.createElement("div");
       actions.className = "actions";
