@@ -38,24 +38,31 @@
   }
   header h1 {
     margin: 0 0 10px;
-    font-size: 32px;
+    font-size: 24px;
     color: var(--accent);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    flex-wrap: wrap;
-    letter-spacing: 0.5px;
+    flex-wrap: nowrap;
+    letter-spacing: 0.3px;
     font-weight: 800;
     text-transform: uppercase;
     line-height: 1.1;
+    white-space: nowrap;
   }
   .logo-text {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    white-space: nowrap;
   }
-  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
   @media (max-width: 480px) {
-    header h1 { font-size: 24px; gap: 6px; }
+    header h1 { font-size: 18px; gap: 4px; }
+    .e-logo { width: 56px; height: 56px; font-size: 42px; }
+  }
+  @media (max-width: 360px) {
+    header h1 { font-size: 16px; }
+    .e-logo { width: 48px; height: 48px; font-size: 36px; }
   }
 
   /* Parlayan/sönen kırmızı E logosu (eczane tabelası tarzı) */
