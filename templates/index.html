@@ -60,8 +60,8 @@
     .title-line-2 { font-size: 22px; }
     .e-logo { width: 48px; height: 48px; font-size: 34px; }
     /* Telefonda da yan yana: yazıları küçült, taşmasın */
-    .btn-primary { font-size: 14px; padding: 12px 10px; }
-    .btn-map { font-size: 14px; padding: 12px 12px; }
+    .btn-primary { font-size: 16px; padding: 12px 12px; }
+    .btn-map { font-size: 13px; padding: 10px 14px; }
   }
   @media (max-width: 360px) {
     .title-line-1 { font-size: 24px; }
@@ -147,19 +147,27 @@
     color: #fff;
     padding: 14px 16px;
     flex: 1;
+    font-size: 18px;
+    line-height: 1.25;
   }
   .btn-primary:hover { background: var(--accent-dark); }
   .btn-primary:disabled { background: #9eb5c3; cursor: not-allowed; }
 
   /* Küçük harita butonu */
   .btn-map {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     background: #fff;
     color: var(--accent);
     border: 2px solid var(--accent);
-    padding: 14px 14px;
+    padding: 12px 16px;
     flex: 0 0 auto;
     white-space: nowrap;
   }
+  .map-ico { width: 22px; height: 22px; display: block; }
   .btn-map:hover { background: var(--accent); color: #fff; }
   .btn-map:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -310,8 +318,15 @@
   <!-- ANA BUTON BÖLGESİ -->
   <div id="mainCard" class="card">
     <div class="btn-row">
-      <button id="findBtn" class="btn-primary">📍 Bana En Yakın Nöbetçi Eczaneyi Bul</button>
-      <button id="mapBtn" class="btn-map" title="Haritada Gör">🗺️ Harita</button>
+      <button id="findBtn" class="btn-primary">📍 Bana En Yakın<br>Nöbetçi Eczane</button>
+      <button id="mapBtn" class="btn-map" title="Haritada Gör">
+        <svg class="map-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/>
+          <line x1="8" y1="3" x2="8" y2="18"/>
+          <line x1="16" y1="6" x2="16" y2="21"/>
+        </svg>
+        Harita
+      </button>
     </div>
     <div id="status" class="status"></div>
   </div>
