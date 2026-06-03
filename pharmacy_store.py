@@ -117,10 +117,16 @@ def get_province(duty_date: str, plate_code: int | str) -> list[dict]:
 
 
 def completed_plates(duty_date: str) -> set[int]:
-    """Verilen nöbet günü için scrape'i tamamlanmış plaka kodları."""
+    """Verilen nöbet günü için scrape'i tamamlanmış plaka kodları.
+
+    count=0 olan iller 'tamamlandı' sayılmaz: e-Devlet hızlı isteklerde
+    bazen boş forma döndürüyor (geçici 0). Böylece sonraki scrape turu
+    bu illeri tekrar dener; gerçekten boş olanlar (ör. İzmir TİTCK'te yok)
+    yine 0 döner ama denemeye devam etmenin maliyeti düşük.
+    """
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT plate_code FROM scrape_log WHERE duty_date = ?",
+            "SELECT plate_code FROM scrape_log WHERE duty_date = ? AND count > 0",
             (duty_date,),
         )
         return {int(r["plate_code"]) for r in cur.fetchall()}

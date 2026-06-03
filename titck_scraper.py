@@ -37,8 +37,10 @@ LON_RE = re.compile(r"var longi = parseFloat\(([\d\.]+)\);")
 REQUEST_TIMEOUT = 20
 MAX_RETRIES = 5
 RETRY_BACKOFF = 2.0          # saniye, denemeyle çarpılır
-COORD_DELAY = 0.2            # her koordinat isteği arası nazik gecikme
+COORD_DELAY = 0.45           # her koordinat isteği arası nazik gecikme
 COORD_MAX_RETRIES = 3
+EMPTY_RETRIES = 3            # boş sonuç dönerse token tazeleyip yeniden dene
+EMPTY_BACKOFF = 5.0         # boş sonuç denemeleri arası bekleme (throttle penceresi geçsin)
 
 
 def _soup(content: bytes | str) -> BeautifulSoup:
@@ -115,28 +117,42 @@ class TitckSession:
                          site listesindeki ilk tarih kullanılır.
         """
         started = time.time()
-        token, dates = self.fetch_context()
-        if not token or not dates:
-            logger.warning("plaka %s: token/tarih alınamadı", plate_code)
-            return ScrapeResult(success=False, plate_code=plate_code, took=time.time() - started)
+        date_str = None
+        rows: list = []
+        # e-Devlet hızlı/ardışık isteklerde token/submit'i bazen reddedip boş
+        # forma döndürüyor (geçici 0 sonuç). Boş dönerse token'ı tazeleyip
+        # birkaç kez yeniden deneriz; gerçekten boş iller yine boş döner.
+        for attempt in range(EMPTY_RETRIES):
+            token, dates = self.fetch_context()
+            if not token or not dates:
+                logger.warning("plaka %s: token/tarih alınamadı", plate_code)
+                if attempt < EMPTY_RETRIES - 1:
+                    time.sleep(EMPTY_BACKOFF)
+                    continue
+                return ScrapeResult(success=False, plate_code=plate_code, took=time.time() - started)
 
-        date_str = prefer_date if (prefer_date and prefer_date in dates) else dates[0]
-
-        payload = {
-            "ilkod": plate_code,
-            "ilkod-address-il": plate_code,
-            "ilkod-address-ilce": "",
-            "nobetTarihi": date_str,
-            "token": token,
-            "btn": "Sorgula",
-        }
-        # POST submit doğrudan sonuç sayfasına yönlendiriyor; yine de
-        # sonucu ayrı GET ile de teyit ediyoruz.
-        resp = self._request("POST", SUBMIT_URL, data=payload)
-        rows = self._extract_rows(resp.content)
-        if not rows:
-            resp = self._request("GET", RESULTS_URL)
+            date_str = prefer_date if (prefer_date and prefer_date in dates) else dates[0]
+            payload = {
+                "ilkod": plate_code,
+                "ilkod-address-il": plate_code,
+                "ilkod-address-ilce": "",
+                "nobetTarihi": date_str,
+                "token": token,
+                "btn": "Sorgula",
+            }
+            # POST submit doğrudan sonuç sayfasına yönlendiriyor; yine de
+            # sonucu ayrı GET ile de teyit ediyoruz.
+            resp = self._request("POST", SUBMIT_URL, data=payload)
             rows = self._extract_rows(resp.content)
+            if not rows:
+                resp = self._request("GET", RESULTS_URL)
+                rows = self._extract_rows(resp.content)
+
+            if rows:
+                break
+            if attempt < EMPTY_RETRIES - 1:
+                logger.info("plaka %s: boş sonuç, yeniden deneniyor (%d)", plate_code, attempt + 1)
+                time.sleep(EMPTY_BACKOFF)
 
         pharmacies = self._parse_rows(rows)
         self._fill_coordinates(pharmacies)

@@ -24,7 +24,7 @@ from titck_scraper import TitckSession
 logger = logging.getLogger("scrape_all")
 
 TURKEY_TZ = timezone(timedelta(hours=3))
-PROVINCE_DELAY = 1.5   # iller arası nazik gecikme (saniye)
+PROVINCE_DELAY = 2.5   # iller arası nazik gecikme (saniye) — throttle'ı tetiklememek için
 
 
 def active_duty_dates() -> list[str]:
