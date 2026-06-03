@@ -3,34 +3,34 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Kahramanmaraş Nöbetçi Eczane</title>
+<title>Nobetcim — En Yakın Nöbetçi Eczane</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <style>
   :root {
     --bg: #f4f7fa;
     --card: #ffffff;
     --accent: #246b8f;
     --accent-dark: #1a536e;
-    --wa: #25d366;
-    --wa-dark: #128c7e;
+    --green: #2e9c5e;
+    --orange: #e8762a;
     --text: #1f2d3a;
     --muted: #677889;
     --border: #e2e8ef;
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 24px 16px;
   }
   .app {
     width: 100%;
     max-width: 540px;
+    margin: 0 auto;
+    padding: 24px 16px;
   }
   header {
     text-align: center;
@@ -63,8 +63,12 @@
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: var(--accent-dark); }
   .btn-primary:disabled { background: #9eb5c3; cursor: not-allowed; }
-  .btn-wa { background: var(--wa); color: #fff; margin-top: 10px; }
-  .btn-wa:hover { background: var(--wa-dark); }
+  .btn-secondary {
+    background: #fff;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+  }
+  .btn-secondary:hover { background: var(--accent); color: #fff; }
   .status {
     margin-top: 12px;
     font-size: 14px;
@@ -119,14 +123,74 @@
     color: var(--muted);
     font-size: 12px;
     margin-top: 14px;
+    padding: 16px;
   }
   .hidden { display: none !important; }
+
+  /* View toggle */
+  .view-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .view-toggle button {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .view-toggle .active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .view-toggle .inactive {
+    background: #fff;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+  }
+
+  /* Map */
+  #mapView {
+    margin-bottom: 16px;
+  }
+  #map {
+    height: 520px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .leaflet-popup-content {
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .leaflet-popup-content .pop-name {
+    font-weight: 600;
+    color: var(--accent-dark);
+    margin-bottom: 4px;
+  }
+  .leaflet-popup-content .pop-meta {
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .leaflet-popup-content a {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .marker-near {
+    background: var(--green);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px var(--green), 0 1px 4px rgba(0,0,0,0.3);
+  }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <h1>🏥 Kahramanmaraş Nöbetçi Eczane</h1>
+    <h1>🏥 Nobetcim — Nöbetçi Eczane</h1>
     <p>Konumunu paylaş, sana en yakın nöbetçi eczaneyi bulalım.</p>
   </header>
 
@@ -135,40 +199,63 @@
     <div id="status" class="status"></div>
   </div>
 
-  <div id="resultCard" class="card result hidden">
-    <h2 id="pName"></h2>
-    <span class="distance" id="pDistance"></span>
-    <div class="row"><span class="ico">📍</span><span id="pAddress"></span></div>
-    <div class="row"><span class="ico">📞</span><a id="pPhone" href="#"></a></div>
-    <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Google Maps'te aç</a></div>
+  <!-- Görünüm modu seçici (sonuç gelince görünür) -->
+  <div id="viewToggle" class="view-toggle hidden">
+    <button id="listToggle" class="active">📋 Liste</button>
+    <button id="mapToggle" class="inactive">🗺️ Haritada Göster</button>
   </div>
 
-  <div id="othersCard" class="card others hidden">
-    <h3>Diğer nöbetçi eczaneler</h3>
-    <ul id="othersList"></ul>
+  <!-- HARITA görünümü -->
+  <div id="mapView" class="hidden">
+    <div id="map"></div>
+  </div>
+
+  <!-- LISTE görünümü -->
+  <div id="listView">
+    <div id="resultCard" class="card result hidden">
+      <h2 id="pName"></h2>
+      <span class="distance" id="pDistance"></span>
+      <div class="row"><span class="ico">📍</span><span id="pAddress"></span></div>
+      <div class="row"><span class="ico">📞</span><a id="pPhone" href="#"></a></div>
+      <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Google Maps'te aç</a></div>
+    </div>
+
+    <div id="othersCard" class="card others hidden">
+      <h3>Diğer nöbetçi eczaneler</h3>
+      <ul id="othersList"></ul>
+    </div>
   </div>
 
   <footer>
     Veri kaynağı: CollectAPI ·
-    <a href="/gizlilik" style="color:var(--accent);text-decoration:none;">Gizlilik</a> ·
-    <a href="/kullanim" style="color:var(--accent);text-decoration:none;">Kullanım Şartları</a>
+    <a href="/gizlilik">Gizlilik</a> ·
+    <a href="/kullanim">Kullanım Şartları</a>
   </footer>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const findBtn = $("findBtn");
 const statusEl = $("status");
 const resultCard = $("resultCard");
 const othersCard = $("othersCard");
+const viewToggle = $("viewToggle");
+const listView = $("listView");
+const mapView = $("mapView");
+const listToggleBtn = $("listToggle");
+const mapToggleBtn = $("mapToggle");
+
+let _mapInstance = null;
+let _lastGeo = null;
+let _lastLoc = null;
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", isError);
 }
-
 function toRad(d) { return d * Math.PI / 180; }
-
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
@@ -178,14 +265,12 @@ function haversineKm(lat1, lon1, lat2, lon2) {
             Math.sin(dLon/2)**2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
-
 function formatDist(km) {
   if (km < 1) return Math.round(km * 1000) + " m";
   return km.toFixed(2) + " km";
 }
 
 async function getPharmaciesForLocation(lat, lng) {
-  // Cache-busting + no-cache header: tarayıcı asla cache'leme
   const r = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}&_=${Date.now()}`, {
     cache: "no-store",
     headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" }
@@ -201,7 +286,14 @@ function getLocation() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        _lastLoc = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        };
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
       (err) => {
         const messages = {
           1: "Konum izni reddedildi. Tarayıcı ayarlarından izin vermen gerekiyor.",
@@ -228,7 +320,6 @@ function renderResult(nearest, others) {
     phoneLink.textContent = "-";
     phoneLink.removeAttribute("href");
   }
-
   $("pMap").href = nearest.harita || "#";
   resultCard.classList.remove("hidden");
 
@@ -259,10 +350,107 @@ function renderResult(nearest, others) {
   }
 }
 
+// ----- HARITA -----
+function makePharmacyIcon(isNearest) {
+  const color = isNearest ? "#e8762a" : "#246b8f";
+  const size = isNearest ? 38 : 30;
+  const svg = `
+    <svg width="${size}" height="${size}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 2C9 2 4 7 4 14c0 9 12 16 12 16s12-7 12-16c0-7-5-12-12-12z"
+            fill="${color}" stroke="white" stroke-width="2"/>
+      <circle cx="16" cy="13" r="6" fill="white"/>
+      <path d="M13 13h6M16 10v6" stroke="${color}" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>`;
+  return L.divIcon({
+    className: "",
+    html: svg,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size]
+  });
+}
+function makeUserIcon() {
+  const html = `<div style="
+    width:18px;height:18px;background:#2563eb;border-radius:50%;
+    border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3);"></div>`;
+  return L.divIcon({ className:"", html, iconSize:[18,18], iconAnchor:[9,9] });
+}
+
+function renderMap() {
+  if (!_lastGeo || !_lastLoc) return;
+  if (!_mapInstance) {
+    _mapInstance = L.map("map", { scrollWheelZoom: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(_mapInstance);
+  } else {
+    _mapInstance.eachLayer(l => {
+      if (l instanceof L.Marker || l instanceof L.LayerGroup) {
+        _mapInstance.removeLayer(l);
+      }
+    });
+  }
+
+  // Kullanıcı konumu
+  L.marker([_lastLoc.lat, _lastLoc.lng], { icon: makeUserIcon(), zIndexOffset: 1000 })
+    .addTo(_mapInstance)
+    .bindPopup("📍 Buradasın");
+
+  // Eczaneler
+  const bounds = [[_lastLoc.lat, _lastLoc.lng]];
+  _lastGeo.forEach((p, i) => {
+    const isNearest = i === 0;
+    const phoneHtml = p.tel
+      ? `📞 <a href="tel:${p.tel}">${p.tel}</a>`
+      : "";
+    const popupHtml = `
+      <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}${escapeHtml(p.ad)}</div>
+      <div class="pop-meta">📏 ${formatDist(p._km)}</div>
+      <div class="pop-meta">${escapeHtml(p.adres || "-")}</div>
+      <div style="margin-top:6px;">${phoneHtml}</div>
+      <div style="margin-top:4px;"><a href="${p.harita}" target="_blank" rel="noopener">🗺️ Yol tarifi</a></div>
+    `;
+    L.marker([p.lat, p.lng], { icon: makePharmacyIcon(isNearest), zIndexOffset: isNearest ? 500 : 0 })
+      .addTo(_mapInstance)
+      .bindPopup(popupHtml);
+    bounds.push([p.lat, p.lng]);
+  });
+
+  _mapInstance.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+  setTimeout(() => _mapInstance.invalidateSize(), 100);
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// ----- VIEW TOGGLE -----
+function showList() {
+  listToggleBtn.classList.add("active"); listToggleBtn.classList.remove("inactive");
+  mapToggleBtn.classList.add("inactive"); mapToggleBtn.classList.remove("active");
+  listView.classList.remove("hidden");
+  mapView.classList.add("hidden");
+}
+function showMap() {
+  listToggleBtn.classList.remove("active"); listToggleBtn.classList.add("inactive");
+  mapToggleBtn.classList.remove("inactive"); mapToggleBtn.classList.add("active");
+  listView.classList.add("hidden");
+  mapView.classList.remove("hidden");
+  renderMap();
+}
+listToggleBtn.addEventListener("click", showList);
+mapToggleBtn.addEventListener("click", showMap);
+
 findBtn.addEventListener("click", async () => {
   findBtn.disabled = true;
   resultCard.classList.add("hidden");
   othersCard.classList.add("hidden");
+  viewToggle.classList.add("hidden");
+  mapView.classList.add("hidden");
   setStatus("Konum alınıyor...");
 
   try {
@@ -272,7 +460,7 @@ findBtn.addEventListener("click", async () => {
     const resp = await getPharmaciesForLocation(loc.lat, loc.lng);
     if (resp.error) throw new Error(resp.error);
 
-    const pharmacies = resp.pharmacies || resp; // backward-compat
+    const pharmacies = resp.pharmacies || resp;
     const fallback = resp.fallback === true;
     const districtName = resp.user_district_display;
 
@@ -298,7 +486,10 @@ findBtn.addEventListener("click", async () => {
       setStatus("");
     }
 
+    _lastGeo = geo;
     renderResult(geo[0], geo.slice(1));
+    viewToggle.classList.remove("hidden");
+    showList();
   } catch (e) {
     setStatus(e.message, true);
   } finally {
