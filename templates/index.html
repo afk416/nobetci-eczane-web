@@ -192,6 +192,18 @@
   .others li:first-child { border-top: none; }
   .others .name { font-weight: 600; }
   .others .meta { color: var(--muted); font-size: 13px; }
+  .others .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .others .act {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    text-decoration: none;
+    color: var(--text);
+    background: var(--card, transparent);
+  }
+  .others .act:active { opacity: .7; }
   footer {
     text-align: center;
     color: var(--muted);
@@ -397,15 +409,29 @@ function renderResult(nearest, others) {
       name.textContent = p.ad + (p.ilce ? " (" + p.ilce + ")" : "");
       const meta = document.createElement("div");
       meta.className = "meta";
-      const mapA = document.createElement("a");
-      mapA.href = p.harita;
-      mapA.target = "_blank";
-      mapA.rel = "noopener";
-      mapA.textContent = "harita";
-      meta.textContent = formatDist(p._km) + " • " + (p.adres || "-") + " • ";
-      meta.appendChild(mapA);
+      meta.textContent = formatDist(p._km) + " • " + (p.adres || "-");
+
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      if (p.harita) {
+        const mapA = document.createElement("a");
+        mapA.className = "act";
+        mapA.href = p.harita;
+        mapA.target = "_blank";
+        mapA.rel = "noopener";
+        mapA.innerHTML = "🗺️ <span>Harita</span>";
+        actions.appendChild(mapA);
+      }
+      if (p.tel) {
+        const telA = document.createElement("a");
+        telA.className = "act";
+        telA.href = "tel:" + p.tel;
+        telA.innerHTML = "📞 <span>" + p.tel + "</span>";
+        actions.appendChild(telA);
+      }
       li.appendChild(name);
       li.appendChild(meta);
+      li.appendChild(actions);
       othersList.appendChild(li);
     });
     othersCard.classList.remove("hidden");
