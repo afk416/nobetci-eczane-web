@@ -195,7 +195,7 @@
   /* Diğer eczaneler kartı da görünürken yumuşakça belirir */
   .others { animation: fadeIn 0.5s ease both; }
 
-  .result h2 { margin: 0 0 6px; font-size: 18px; color: var(--accent); display: flex; align-items: center; }
+  .result h2 { margin: 0 0 6px; font-size: 20px; color: var(--accent); display: flex; align-items: center; }
   .result .distance {
     display: inline-block;
     background: #e7f1f7;
@@ -230,7 +230,7 @@
     font-size: 14px;
   }
   .others li:first-child { border-top: none; }
-  .others .name { font-weight: 600; display: flex; align-items: center; }
+  .others .name { font-weight: 600; font-size: 16px; display: flex; align-items: center; }
   .others .meta { color: var(--muted); font-size: 13px; }
   .others .dist { color: #16a34a; font-size: 15px; font-weight: 700; }
   .others .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -400,6 +400,13 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+// Eczane ismi: kaynak veride çoğu zaman sadece "MURAT" gibi gelir; sonuna "Eczanesi" ekle
+function pharmacyName(ad) {
+  const s = String(ad || "").trim();
+  if (!s) return "Eczane";
+  return /eczane/i.test(s) ? s : s + " Eczanesi";
+}
+
 async function getPharmaciesForLocation(lat, lng) {
   const r = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}&_=${Date.now()}`, {
     cache: "no-store",
@@ -438,7 +445,7 @@ function getLocation() {
 }
 
 function renderResult(nearest, others) {
-  $("pName").innerHTML = '<span class="e-badge">E</span>' + escapeHtml(nearest.ad + (nearest.ilce ? " (" + nearest.ilce + ")" : ""));
+  $("pName").innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(nearest.ad) + (nearest.ilce ? " (" + nearest.ilce + ")" : ""));
   $("pDistance").textContent = "📏 " + formatDist(nearest._km);
   $("pAddress").textContent = nearest.adres || "-";
   const phoneLink = $("pPhone");
@@ -459,7 +466,7 @@ function renderResult(nearest, others) {
       const li = document.createElement("li");
       const name = document.createElement("div");
       name.className = "name";
-      name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(p.ad + (p.ilce ? " (" + p.ilce + ")" : ""));
+      name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(p.ad) + (p.ilce ? " (" + p.ilce + ")" : ""));
       const meta = document.createElement("div");
       meta.className = "meta";
       const distSpan = document.createElement("span");
@@ -549,7 +556,7 @@ function renderMap() {
     const isNearest = i === 0;
     const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
     const popupHtml = `
-      <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}<span class="e-badge">E</span>${escapeHtml(p.ad)}</div>
+      <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}<span class="e-badge">E</span>${escapeHtml(pharmacyName(p.ad))}</div>
       <div class="pop-meta">📏 ${formatDist(p._km)}</div>
       <div class="pop-meta">${escapeHtml(p.adres || "-")}</div>
       <div style="margin-top:6px;">${phoneHtml}</div>
