@@ -3,6 +3,23 @@ import logging
 import math
 import os
 
+# Sentry hata izleme (env'de SENTRY_DSN tanımlıysa aktif)
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            send_default_pii=False,
+            traces_sample_rate=0.0,
+            environment=os.environ.get("ENVIRONMENT", "production"),
+            release=os.environ.get("RELEASE", "nobetcim@1.0.0"),
+        )
+    except Exception:
+        # Sentry'siz devam edebilmek için sessiz başarısızlık
+        pass
+
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,

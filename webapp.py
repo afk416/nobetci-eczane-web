@@ -1,5 +1,6 @@
 """Nobetcim — Türkiye geneli nöbetçi eczane web servisi."""
 import logging
+import os
 
 from flask import Flask, jsonify, render_template, request
 
@@ -10,6 +11,25 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+# Sentry hata izleme (env'de SENTRY_DSN tanımlıysa aktif)
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            send_default_pii=False,
+            traces_sample_rate=0.0,
+            integrations=[FlaskIntegration()],
+            environment=os.environ.get("ENVIRONMENT", "production"),
+            release=os.environ.get("RELEASE", "nobetcim@1.0.0"),
+        )
+        logger.info("Sentry başlatıldı (webapp)")
+    except Exception:
+        logger.exception("Sentry init başarısız")
 
 app = Flask(__name__)
 
