@@ -4,6 +4,16 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>En Yakın Nöbetçi Eczaneler — Nobetcim</title>
+<!-- PWA: telefona kurulabilir, çevrimdışı açılır -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#246b8f" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png" />
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Nobetcim" />
+<meta name="mobile-web-app-capable" content="yes" />
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
 <style>
   :root {
@@ -874,6 +884,14 @@ backToList.addEventListener("click", () => {
     closeMap();
   }
 });
+</script>
+<script>
+// PWA service worker kaydı (uygulama gibi kurulum + çevrimdışı kabuk)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  });
+}
 </script>
 </body>
 </html>

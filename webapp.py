@@ -2,9 +2,11 @@
 import logging
 import os
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from pharmacy_scraper import fetch_pharmacies, get_location_info
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -57,6 +59,23 @@ def gizlilik():
 @app.route("/kullanim")
 def kullanim():
     return render_template("kullanim.html")
+
+
+@app.route("/sw.js")
+def service_worker():
+    # Kök yoldan sunulmalı ki SW kapsamı tüm site ("/") olsun.
+    resp = send_from_directory(_STATIC_DIR, "sw.js")
+    resp.headers["Content-Type"] = "application/javascript"
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Service-Worker-Allowed"] = "/"
+    return resp
+
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    resp = send_from_directory(_STATIC_DIR, "manifest.webmanifest")
+    resp.headers["Content-Type"] = "application/manifest+json"
+    return resp
 
 
 @app.route("/healthz")
