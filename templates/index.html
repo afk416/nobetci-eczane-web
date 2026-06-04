@@ -394,7 +394,7 @@ function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", isError);
 }
-const RADIUS_KM = 15;  // ilçe farketmeksizin bu yarıçaptaki tüm eczaneler
+const RADIUS_KM = 30;  // ilçe farketmeksizin bu yarıçaptaki tüm eczaneler
 function toRad(d) { return d * Math.PI / 180; }
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
