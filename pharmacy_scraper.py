@@ -12,9 +12,11 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+import geo_lookup
 import pharmacy_store as store
 from provinces import (  # noqa: F401 (geriye dönük uyumluluk için re-export)
     DISTRICT_NORMALIZE,
+    PLATE_CITY,
     PROVINCE_ALIASES,
     TURKEY_PROVINCES,
     district_key,
@@ -131,12 +133,26 @@ def _detect_province(addr: dict) -> str | None:
 
 
 def get_location_info(lat: float, lng: float) -> dict | None:
-    """Koordinattan il + ilçe bilgisini Nominatim üzerinden döner.
+    """Koordinattan il (+ varsa ilçe) bilgisi — HİBRİT.
 
-    Returns:
-        {"il": "kahramanmaras", "ilce_key": "merkez", "ilce_display": "Onikişubat"}
-        veya None
+    1) Önce ÇEVRİMDIŞI il sınırı poligonu (ağ yok, sınırsız, anlık).
+    2) Çevrimdışı bulamazsa (sınır/kıyı/GPS hatası) Nominatim'e yedek düşer.
+
+    Çevrimdışı yolda ilçe etiketi dönmez (ilce_display=None); ilçe yalnız
+    yedek Nominatim devreye girince gelir. İlçe sadece ekran etiketidir,
+    eczane süzmeyi etkilemez.
     """
+    plate = geo_lookup.province_for(lat, lng)
+    if plate is not None:
+        city = PLATE_CITY.get(plate)
+        if city:
+            return {"il": normalize_text(city), "ilce_key": None, "ilce_display": None}
+    # Çevrimdışı bulunamadı -> Nominatim yedek
+    return _nominatim_location_info(lat, lng)
+
+
+def _nominatim_location_info(lat: float, lng: float) -> dict | None:
+    """Yedek: koordinattan il + ilçe bilgisini Nominatim üzerinden döner."""
     try:
         url = (
             "https://nominatim.openstreetmap.org/reverse"
