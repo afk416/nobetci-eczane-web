@@ -507,6 +507,16 @@ function formatDist(km) {
 }
 // Google Maps yol tarifi (kullanıcı konumundan eczaneye)
 function dirUrl(p) {
+  // Ham koordinata gidince Google iğneyi tam o noktaya koyuyor; kaynak pin
+  // birkaç metre kayıksa yan binaya düşüyor. Bunun yerine ad + adres ile
+  // arat: Google kayıtlı eczane işletmesine "snap"ler (doğru pin). Ad/adres
+  // yoksa koordinata düş.
+  const ad = (p && p.ad) ? pharmacyName(p.ad) : "";
+  const adres = (p && p.adres) || "";
+  const q = [ad, adres].filter(Boolean).join(" ").trim();
+  if (q) {
+    return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(q);
+  }
   if (p && p.lat != null && p.lng != null) {
     return "https://www.google.com/maps/dir/?api=1&destination=" + p.lat + "," + p.lng;
   }
