@@ -612,8 +612,8 @@ function getLocation() {
       reject(new Error("Tarayıcın konum özelliğini desteklemiyor."));
       return;
     }
-    const GOOD_ACCURACY = 150; // m — bu kadar hassas fix yeterli, hemen kullan
-    const MAX_WAIT = 8000;     // ms — en geç bu kadar bekle, en iyisini al
+    const GOOD_ACCURACY = 1000; // m — il tespiti için 1 km fazlasıyla yeterli; gelince hemen kullan (hız)
+    const MAX_WAIT = 4000;      // ms — en geç bu kadar bekle, sonra en iyi fix'i al
     let best = null, watchId = null, timer = null, done = false;
 
     const finish = () => {
