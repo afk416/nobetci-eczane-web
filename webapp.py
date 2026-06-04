@@ -78,6 +78,22 @@ def manifest():
     return resp
 
 
+@app.route("/robots.txt")
+def robots():
+    # Arama motorlarına izin, AI veri toplayıcılarına yasak (kök yoldan).
+    resp = send_from_directory(_STATIC_DIR, "robots.txt")
+    resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+    return resp
+
+
+@app.route("/favicon.ico")
+def favicon():
+    # /favicon.ico'yu doğrudan isteyen istemciler için (tüm sayfalarda ikon).
+    resp = send_from_directory(_STATIC_DIR, "favicon-32.png")
+    resp.headers["Content-Type"] = "image/png"
+    return resp
+
+
 @app.route("/healthz")
 def healthz():
     return {"status": "ok"}, 200
