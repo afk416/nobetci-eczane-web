@@ -71,6 +71,38 @@ CHAMBER_SOURCES: dict[int, dict] = {
     # 79 Kilis -> Eflatunweb/Netosfer, ayrı parser (kilis_scraper)
 }
 
+# TİTCK birincil; bu iller TİTCK'tan bugün veri ALINAMAZSA (boş/hata) oda
+# sitesinden YEDEK olarak çekilir. discover_chambers.py ile keşfedildi.
+# Yalnız OBEN platformlu, parser'ımızın tuttuğu odalar buradadır.
+FALLBACK_SOURCES: dict[int, dict] = {
+    1:  {"url": "https://www.adanaeo.org.tr/nobetci-eczaneler",            "coords": True},  # Adana
+    2:  {"url": "https://www.adiyamaneo.org.tr/nobetci-eczaneler",         "coords": True},  # Adıyaman
+    4:  {"url": "https://www.agrieo.org.tr/nobetci-eczaneler",             "coords": True},  # Ağrı
+    10: {"url": "https://www.balikesireczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Balıkesir
+    17: {"url": "https://www.canakkaleeo.org.tr/nobetci-eczaneler",        "coords": True},  # Çanakkale
+    19: {"url": "https://www.corumeo.org.tr/nobetci-eczaneler",            "coords": True},  # Çorum
+    20: {"url": "https://www.denizlieczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Denizli
+    24: {"url": "https://www.erzincaneo.org.tr/nobetci-eczaneler",         "coords": True},  # Erzincan
+    25: {"url": "https://www.erzurumeo.org.tr/nobetci-eczaneler/25",       "coords": True},  # Erzurum
+    31: {"url": "https://www.hatayeo.org.tr/nobetci-eczaneler",            "coords": True},  # Hatay
+    32: {"url": "https://www.ispartaeo.org.tr/nobetci-eczaneler",          "coords": True},  # Isparta
+    37: {"url": "https://www.kastamonueo.org.tr/nobetci-eczaneler/37",     "coords": True},  # Kastamonu
+    39: {"url": "https://www.kirklarelieo.org.tr/nobetci-eczaneler",       "coords": True},  # Kırklareli
+    45: {"url": "https://www.manisaeczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Manisa
+    46: {"url": "https://www.kahramanmaraseo.org.tr/nobetci-eczaneler",    "coords": True},  # Kahramanmaraş
+    47: {"url": "https://www.mardineczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Mardin
+    48: {"url": "https://www.muglaeczaciodasi.org.tr/nobetci-eczaneler",   "coords": True},  # Muğla
+    50: {"url": "https://www.nevsehireo.org.tr/nobetci-eczaneler",         "coords": True},  # Nevşehir
+    55: {"url": "https://www.samsuneczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Samsun
+    56: {"url": "https://www.siirteo.org.tr/nobetci-eczaneler",            "coords": True},  # Siirt
+    58: {"url": "https://www.sivaseo.org.tr/nobetci-eczaneler",            "coords": True},  # Sivas
+    61: {"url": "https://www.trabzoneczaciodasi.org.tr/nobetci-eczaneler/61", "coords": True},  # Trabzon
+    66: {"url": "https://www.yozgateo.org.tr/nobetci-eczaneler",           "coords": True},  # Yozgat
+    67: {"url": "https://www.zonguldakeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Zonguldak
+    68: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True},  # Aksaray
+    80: {"url": "https://www.osmaniyeeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Osmaniye
+}
+
 
 def _norm(s: str) -> str:
     """Türkçe il/ilçe adını karşılaştırma için sadeleştir (büyük ASCII)."""

@@ -79,6 +79,17 @@ def scrape_for_date(
         for ph in res.pharmacies:
             ph["district_key"] = district_key(ph.get("district", ""))
 
+        # Katman 1: TİTCK "başarılı ama boş" dönerse, bugün elimizdeki dolu
+        # veriyi EZME (sabahki iyi veri kalsın). Geçici 0'lara karşı koruma.
+        if not res.pharmacies and store.province_count(duty_iso, plate) > 0:
+            logger.warning(
+                "[%d/%d] %s (%d) TİTCK boş döndü; mevcut %d kayıt KORUNDU",
+                i, len(pending), city, plate, store.province_count(duty_iso, plate),
+            )
+            fail += 1
+            time.sleep(PROVINCE_DELAY)
+            continue
+
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
         store.save_province(duty_iso, plate, city, res.pharmacies)
         logger.info(
@@ -125,6 +136,14 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
             time.sleep(CHAMBER_DELAY)
             continue
 
+        # Katman 1: oda boş döndüyse bugünkü dolu veriyi ezme
+        if not res.pharmacies and store.province_count(duty_iso, plate) > 0:
+            logger.warning("[%d/%d] oda %s (%d) boş döndü; mevcut kayıt KORUNDU",
+                           i, len(targets), city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
         # koordinatsız eczaneleri geocode et (önbellekli)
         if any(p.get("lat") is None for p in res.pharmacies):
             chamber.geocode_pharmacies(res.pharmacies, city)
@@ -139,6 +158,69 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
         time.sleep(CHAMBER_DELAY)
 
     return ok, fail
+
+
+def scrape_fallbacks(duty_iso: str, plates: list[int]) -> tuple[int, int]:
+    """TİTCK'ten bugün veri ALINAMAYAN illeri (count<=0) oda yedeğinden doldurur.
+
+    Yalnız chamber.FALLBACK_SOURCES'ta kayıtlı (OBEN, parser tutan) iller için
+    çalışır. Dolu veri zaten varsa o ile dokunmaz.
+    """
+    targets = [
+        p for p in plates
+        if p in chamber.FALLBACK_SOURCES and store.province_count(duty_iso, p) <= 0
+    ]
+    if not targets:
+        return 0, 0
+
+    logger.info("Fallback (oda yedeği): %d il deneniyor: %s",
+                len(targets), ", ".join(f"{p} {PLATE_CITY[p]}" for p in targets))
+    ok = fail = 0
+    for plate in targets:
+        city = PLATE_CITY[plate]
+        info = chamber.FALLBACK_SOURCES[plate]
+        try:
+            res = chamber.scrape_chamber(
+                info["url"], city, str(plate), multi=info.get("multi", False)
+            )
+        except Exception:
+            logger.exception("fallback %s (%d) HATA", city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        if not res.success or not res.pharmacies:
+            logger.warning("fallback %s (%d) veri yok", city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        if any(p.get("lat") is None for p in res.pharmacies):
+            chamber.geocode_pharmacies(res.pharmacies, city)
+        for ph in res.pharmacies:
+            ph["district_key"] = district_key(ph.get("district", ""))
+
+        with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
+        store.save_province(duty_iso, plate, city, res.pharmacies)
+        logger.info("fallback ODA %s (%d): %d eczane (%d koordinatlı) — TİTCK boştu",
+                    city, plate, len(res.pharmacies), with_coords)
+        ok += 1
+        time.sleep(CHAMBER_DELAY)
+
+    return ok, fail
+
+
+def report_empty(duty_iso: str, plates: list[int]) -> None:
+    """Tüm kaynaklar denendikten sonra hâlâ verisiz kalan illeri raporlar."""
+    empty = [p for p in plates if store.province_count(duty_iso, p) <= 0]
+    if empty:
+        logger.warning(
+            "⚠ BUGÜN VERİSİZ İLLER (%d/%d): %s",
+            len(empty), len(plates),
+            ", ".join(f"{p} {PLATE_CITY[p]}" for p in empty),
+        )
+    else:
+        logger.info("Tüm iller (%d) için veri mevcut.", len(plates))
 
 
 def main() -> int:
@@ -180,6 +262,13 @@ def main() -> int:
     chamber_ok, chamber_fail = scrape_chambers(iso_date(dates[0]), plates, args.force)
     total_ok += chamber_ok
     total_fail += chamber_fail
+
+    # Fallback: TİTCK'ten bugün veri alınamayan illeri oda yedeğinden doldur
+    fb_ok, fb_fail = scrape_fallbacks(iso_date(dates[0]), plates)
+    total_ok += fb_ok
+
+    # Hâlâ verisiz kalan illeri raporla (hangi ile fallback gerektiğini görmek için)
+    report_empty(iso_date(dates[0]), plates)
 
     # Eski nöbet günlerini temizle (aktif günleri tut)
     keep = [iso_date(d) for d in dates]
