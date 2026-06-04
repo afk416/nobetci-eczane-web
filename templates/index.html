@@ -135,6 +135,8 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .e-logo { animation: none; }
+    .map-e, .user-dot { animation: none; }
+    .user-ripple { display: none; }
     .result { animation: none; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 10px 1px rgba(22,163,74,0.12); }
   }
   .card {
@@ -270,13 +272,103 @@
   }
   .hidden { display: none !important; }
 
-  /* Harita */
-  #mapCard { padding: 0; overflow: hidden; }
-  #map {
-    height: 540px;
-    width: 100%;
-    border-radius: 14px;
+  /* ---- Harita (tam ekran) ---- */
+  #mapView {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #fff;
   }
+  #map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  /* Üstte solda "Ana Sayfa" butonu (yuvarlak hap, gölgeli) */
+  #backToList {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 1001;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    width: auto;
+    background: #fff;
+    color: #18181b;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 9999px;
+    padding: 10px 16px 10px 13px;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  }
+  #backToList:hover { background: #f4f4f5; color: #18181b; }
+  #backToList:active { transform: scale(0.97); }
+  .back-ico { width: 18px; height: 18px; display: block; }
+
+  /* Eczane marker'ı: yanıp sönen kırmızı E (ana sayfadaki logoyla aynı) */
+  .map-e {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #d32f2f;
+    color: #fff;
+    font-weight: 900;
+    font-size: 19px;
+    line-height: 1;
+    border-radius: 7px;
+    border: 2px solid #fff;
+    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+    box-shadow: 0 0 0 0 rgba(211,47,47,0.7), 0 2px 6px rgba(0,0,0,0.35);
+    animation: e-pulse 1.6s ease-in-out infinite;
+    cursor: pointer;
+  }
+  .map-e.nearest {
+    width: 44px;
+    height: 44px;
+    font-size: 27px;
+    border-radius: 9px;
+    z-index: 3;
+  }
+
+  /* Kullanıcı konumu: mavi nokta + genişleyen halka */
+  .user-loc { position: relative; width: 18px; height: 18px; }
+  .user-dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 16px; height: 16px;
+    background: #2563eb;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    transform: translate(-50%,-50%);
+    animation: location-pulse 2s ease-in-out infinite;
+    z-index: 2;
+  }
+  .user-ripple {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: rgba(37,99,235,0.4);
+    transform: translate(-50%,-50%);
+    animation: location-ripple 2s ease-out infinite;
+  }
+  .user-ripple.delayed { animation-delay: 1s; }
+  @keyframes location-pulse {
+    0%, 100% { transform: translate(-50%,-50%) scale(1); }
+    50%      { transform: translate(-50%,-50%) scale(1.15); }
+  }
+  @keyframes location-ripple {
+    0%   { transform: translate(-50%,-50%) scale(0.3); opacity: 0.85; }
+    100% { transform: translate(-50%,-50%) scale(3);   opacity: 0; }
+  }
+
   .maplibregl-popup-content {
     font-family: inherit;
     font-size: 14px;
@@ -297,18 +389,6 @@
     font-size: 12.5px;
   }
   .maplibregl-popup-content a { color: var(--accent); font-weight: 600; }
-
-  /* Geri dönüş butonu (harita modunda) */
-  #backToList {
-    margin-bottom: 12px;
-    background: #fff;
-    color: var(--accent);
-    border: 2px solid var(--accent);
-    padding: 12px 16px;
-    width: 100%;
-    font-size: 15px;
-  }
-  #backToList:hover { background: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -340,12 +420,15 @@
     <div id="status" class="status"></div>
   </div>
 
-  <!-- HARİTA MODU -->
+  <!-- HARİTA MODU (tam ekran) -->
   <div id="mapView" class="hidden">
-    <button id="backToList">← Listeye Dön</button>
-    <div id="mapCard" class="card">
-      <div id="map"></div>
-    </div>
+    <button id="backToList" aria-label="Ana sayfaya dön">
+      <svg class="back-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+      </svg>
+      <span>Ana Sayfa</span>
+    </button>
+    <div id="map"></div>
   </div>
 
   <!-- LİSTE MODU (varsayılan) -->
@@ -530,24 +613,18 @@ function renderResult(nearest, others) {
 
 // ---- Harita ikon yardımcıları (MapLibre marker = DOM element) ----
 function makePharmacyEl(isNearest) {
-  const color = isNearest ? "#e8762a" : "#246b8f";
-  const size = isNearest ? 38 : 30;
   const el = document.createElement("div");
-  el.style.cursor = "pointer";
-  el.innerHTML = `
-    <svg width="${size}" height="${size}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 2C9 2 4 7 4 14c0 9 12 16 12 16s12-7 12-16c0-7-5-12-12-12z"
-            fill="${color}" stroke="white" stroke-width="2"/>
-      <circle cx="16" cy="13" r="6" fill="white"/>
-      <path d="M13 13h6M16 10v6" stroke="${color}" stroke-width="2.4" stroke-linecap="round"/>
-    </svg>`;
+  el.className = "map-e" + (isNearest ? " nearest" : "");
+  el.textContent = "E";
   return el;
 }
 function makeUserEl() {
   const el = document.createElement("div");
-  el.style.cssText =
-    "width:18px;height:18px;background:#2563eb;border-radius:50%;" +
-    "border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3);";
+  el.className = "user-loc";
+  el.innerHTML =
+    '<span class="user-ripple"></span>' +
+    '<span class="user-ripple delayed"></span>' +
+    '<span class="user-dot"></span>';
   return el;
 }
 
@@ -586,9 +663,9 @@ function renderMap() {
       <div style="margin-top:6px;">${phoneHtml}</div>
       <div style="margin-top:4px;"><a href="${dirUrl(p)}" target="_blank" rel="noopener">🗺️ Yol tarifi al</a></div>
     `;
-    const m = new maplibregl.Marker({ element: makePharmacyEl(isNearest), anchor: "bottom" })
+    const m = new maplibregl.Marker({ element: makePharmacyEl(isNearest), anchor: "center" })
       .setLngLat([p.lng, p.lat])
-      .setPopup(new maplibregl.Popup({ offset: isNearest ? 34 : 26 }).setHTML(popupHtml))
+      .setPopup(new maplibregl.Popup({ offset: isNearest ? 26 : 20 }).setHTML(popupHtml))
       .addTo(_mapInstance);
     _markers.push(m);
     bounds.extend([p.lng, p.lat]);
@@ -662,6 +739,7 @@ mapBtn.addEventListener("click", async () => {
     showStatusMsg(withinRadius, nearestKm);
     listView.classList.add("hidden");
     mapView.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
     renderMap();
   } catch (e) {
     setStatus(e.message, true);
@@ -673,12 +751,14 @@ mapBtn.addEventListener("click", async () => {
 
 // ---- LİSTEYE DÖN ----
 backToList.addEventListener("click", () => {
+  document.body.style.overflow = "";
   mapView.classList.add("hidden");
   listView.classList.remove("hidden");
   // Eğer önceden liste render edilmediyse render et
   if (_lastGeo && resultCard.classList.contains("hidden")) {
     renderResult(_lastGeo[0], _lastGeo.slice(1));
   }
+  window.scrollTo(0, 0);
 });
 </script>
 </body>
