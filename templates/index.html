@@ -628,21 +628,10 @@ function makeUserEl() {
   return el;
 }
 
-function renderMap() {
-  if (!_lastGeo || !_lastLoc) return;
-  if (!_mapInstance) {
-    _mapInstance = new maplibregl.Map({
-      container: "map",
-      style: OFM_STYLE,
-      center: [_lastLoc.lng, _lastLoc.lat],
-      zoom: 13,
-      attributionControl: { compact: true },
-    });
-    _mapInstance.addControl(new maplibregl.NavigationControl(), "top-right");
-    _mapInstance.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
-  } else {
-    _markers.forEach(m => m.remove());
-  }
+// Marker'ları yerleştirir ve görünümü kullanıcı + en yakın eczaneye odaklar.
+// Harita boyutu/stili hazır olduktan SONRA çağrılmalı (yoksa marker'lar 0,0'a düşer).
+function placeMapMarkers() {
+  _markers.forEach(m => m.remove());
   _markers = [];
 
   const userMarker = new maplibregl.Marker({ element: makeUserEl(), anchor: "center" })
@@ -651,8 +640,6 @@ function renderMap() {
     .addTo(_mapInstance);
   _markers.push(userMarker);
 
-  const bounds = new maplibregl.LngLatBounds();
-  bounds.extend([_lastLoc.lng, _lastLoc.lat]);
   _lastGeo.forEach((p, i) => {
     const isNearest = i === 0;
     const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
@@ -668,11 +655,36 @@ function renderMap() {
       .setPopup(new maplibregl.Popup({ offset: isNearest ? 26 : 20 }).setHTML(popupHtml))
       .addTo(_mapInstance);
     _markers.push(m);
-    bounds.extend([p.lng, p.lat]);
   });
 
-  _mapInstance.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
-  setTimeout(() => _mapInstance.resize(), 120);
+  // Yakın açılış: tüm 30 km'yi değil, kullanıcı + en yakın eczaneyi sığdır.
+  const focus = new maplibregl.LngLatBounds();
+  focus.extend([_lastLoc.lng, _lastLoc.lat]);
+  focus.extend([_lastGeo[0].lng, _lastGeo[0].lat]);
+  _mapInstance.fitBounds(focus, { padding: 110, maxZoom: 16, duration: 0 });
+}
+
+function renderMap() {
+  if (!_lastGeo || !_lastLoc) return;
+  if (!_mapInstance) {
+    _mapInstance = new maplibregl.Map({
+      container: "map",
+      style: OFM_STYLE,
+      center: [_lastLoc.lng, _lastLoc.lat],
+      zoom: 14,
+      attributionControl: { compact: true },
+    });
+    _mapInstance.addControl(new maplibregl.NavigationControl(), "top-right");
+    _mapInstance.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
+    // İlk açılışta stil + boyut hazır olunca marker'ları yerleştir
+    _mapInstance.on("load", () => {
+      _mapInstance.resize();
+      placeMapMarkers();
+    });
+  } else {
+    _mapInstance.resize();
+    placeMapMarkers();
+  }
 }
 
 // ---- Ortak akış: konum + eczaneler ----
