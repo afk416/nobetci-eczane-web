@@ -757,6 +757,10 @@ mapBtn.addEventListener("click", async () => {
     listView.classList.add("hidden");
     mapView.classList.remove("hidden");
     document.body.style.overflow = "hidden";
+    // Geçmişe bir adım ekle ki telefonun geri tuşu siteden çıkmasın, haritayı kapatsın
+    if (!(history.state && history.state.nbMap)) {
+      history.pushState({ nbMap: 1 }, "");
+    }
     renderMap();
   } catch (e) {
     setStatus(e.message, true);
@@ -767,7 +771,8 @@ mapBtn.addEventListener("click", async () => {
 });
 
 // ---- LİSTEYE DÖN ----
-backToList.addEventListener("click", () => {
+// Haritayı kapatıp ana sayfaya (liste görünümüne) dön
+function closeMap() {
   document.body.style.overflow = "";
   mapView.classList.add("hidden");
   listView.classList.remove("hidden");
@@ -776,6 +781,22 @@ backToList.addEventListener("click", () => {
     renderResult(_lastGeo[0], _lastGeo.slice(1));
   }
   window.scrollTo(0, 0);
+}
+
+// Telefonun geri tuşu: siteden çıkma, haritayı kapat (ana sayfaya dön)
+window.addEventListener("popstate", () => {
+  if (!mapView.classList.contains("hidden")) {
+    closeMap();
+  }
+});
+
+backToList.addEventListener("click", () => {
+  // Harita açılırken eklenen geçmiş adımını geri al -> popstate -> closeMap
+  if (history.state && history.state.nbMap) {
+    history.back();
+  } else {
+    closeMap();
+  }
 });
 </script>
 </body>
