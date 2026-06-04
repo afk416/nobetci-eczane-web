@@ -321,8 +321,29 @@
   /* Eczane marker'ı: yanıp sönen kırmızı E (ana sayfadaki logoyla aynı).
      ÖNEMLİ: animasyon (transform: scale) İÇ öğede; dış sarmalayıcıyı MapLibre
      transform: translate ile konumlandırır — ikisi aynı öğede olursa çakışır. */
-  .map-e-wrap { cursor: pointer; line-height: 0; }
+  .map-e-wrap { cursor: pointer; line-height: 0; position: relative; }
   .map-e-wrap.nearest { z-index: 3; }
+  /* E logosunun altındaki eczane adı etiketi */
+  .map-e-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 3px;
+    background: rgba(255,255,255,0.95);
+    color: #1f2d3a;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.2px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.28);
+    border: 1px solid rgba(0,0,0,0.06);
+    pointer-events: none;
+  }
+  .map-e-wrap.nearest .map-e-label { font-size: 12px; color: #b3001b; }
   .map-e {
     display: flex;
     align-items: center;
@@ -635,13 +656,19 @@ function renderResult(nearest, others) {
 }
 
 // ---- Harita ikon yardımcıları (MapLibre marker = DOM element) ----
-function makePharmacyEl(isNearest) {
+function makePharmacyEl(isNearest, name) {
   const el = document.createElement("div");
   el.className = "map-e-wrap" + (isNearest ? " nearest" : "");
   const inner = document.createElement("div");
   inner.className = "map-e";
   inner.textContent = "E";
   el.appendChild(inner);
+  if (name) {
+    const label = document.createElement("div");
+    label.className = "map-e-label";
+    label.textContent = name;
+    el.appendChild(label);
+  }
   return el;
 }
 function makeUserEl() {
@@ -676,7 +703,7 @@ function placeMapMarkers() {
       <div style="margin-top:6px;">${phoneHtml}</div>
       <div style="margin-top:4px;"><a href="${dirUrl(p)}" target="_blank" rel="noopener">🗺️ Yol tarifi al</a></div>
     `;
-    const m = new maplibregl.Marker({ element: makePharmacyEl(isNearest), anchor: "center" })
+    const m = new maplibregl.Marker({ element: makePharmacyEl(isNearest, pharmacyName(p.ad)), anchor: "center" })
       .setLngLat([p.lng, p.lat])
       .setPopup(new maplibregl.Popup({ offset: isNearest ? 26 : 20 }).setHTML(popupHtml))
       .addTo(_mapInstance);
