@@ -359,6 +359,7 @@
     animation: labelGlow 1.6s ease-in-out infinite;
   }
   .map-e-label .near-tag { font-size: 10.5px; font-weight: 800; margin-top: 1px; }
+  .map-e-label.user-label { color: #2563eb; }
   @keyframes labelGlow {
     0%, 100% { text-shadow: 0 0 2px rgba(21,128,61,0.45); }
     50%      { text-shadow: 0 0 8px rgba(34,197,94,0.95), 0 0 14px rgba(21,128,61,0.7); }
@@ -722,6 +723,15 @@ function placeMapMarkers() {
     .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML("📍 Buradasın"))
     .addTo(_mapInstance);
   _markers.push(userMarker);
+
+  // Konum ikonunun altında "KONUMUNUZ" etiketi (ayrı marker)
+  const userLabelEl = document.createElement("div");
+  userLabelEl.className = "map-e-label user-label";
+  userLabelEl.textContent = "KONUMUNUZ";
+  const userLabel = new maplibregl.Marker({ element: userLabelEl, anchor: "top", offset: [0, 14] })
+    .setLngLat([_lastLoc.lng, _lastLoc.lat])
+    .addTo(_mapInstance);
+  _markers.push(userLabel);
 
   _lastGeo.forEach((p, i) => {
     const isNearest = i === 0;
