@@ -236,6 +236,12 @@
   .row .ico { width: 20px; flex-shrink: 0; text-align: center; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  /* Tıklanabilir satır (telefon / yol tarifi) — ikon dahil hepsi link */
+  .row-link { cursor: pointer; color: var(--accent); align-items: center; }
+  .row-link:hover { text-decoration: none; }
+  .row-link:active { opacity: .7; }
+  .dir-ico { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+  .row .dir-text { font-size: 15.5px; font-weight: 700; }
   .others h3 {
     font-size: 15px;
     margin: 0 0 10px;
@@ -264,6 +270,9 @@
     background: var(--card, transparent);
   }
   .others .act:active { opacity: .7; }
+  /* Yol tarifi linki: 1 punto büyük + kalın, harita ikonlu */
+  .others .act-dir { font-size: 14px; font-weight: 700; }
+  .others .act .dir-ico { width: 16px; height: 16px; }
   footer {
     text-align: center;
     color: var(--muted);
@@ -439,8 +448,8 @@
       <h2 id="pName"></h2>
       <span class="distance" id="pDistance"></span>
       <div class="row"><span class="ico">📍</span><span id="pAddress"></span></div>
-      <div class="row"><span class="ico">📞</span><a id="pPhone" href="#"></a></div>
-      <div class="row"><span class="ico">🗺️</span><a id="pMap" href="#" target="_blank" rel="noopener">Yol tarifi al</a></div>
+      <a class="row row-link" id="pPhone"><span class="ico">📞</span><span class="row-txt" id="pPhoneTxt"></span></a>
+      <a class="row row-link" id="pMap" target="_blank" rel="noopener"><span class="ico"><svg class="dir-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></svg></span><span class="row-txt dir-text">Yol tarifi al</span></a>
     </div>
 
     <div id="othersCard" class="card others hidden">
@@ -470,6 +479,8 @@ const resultCard = $("resultCard");
 const othersCard = $("othersCard");
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/liberty";  // ücretsiz, anahtarsız vektör harita
+// Harita butonundaki ile aynı "harita" ikonu (yol tarifi linklerinde kullanılır)
+const MAP_ICO = '<svg class="dir-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></svg>';
 let _mapInstance = null;
 let _markers = [];
 let _lastGeo = null;
@@ -559,10 +570,10 @@ function renderResult(nearest, others) {
   $("pAddress").textContent = nearest.adres || "-";
   const phoneLink = $("pPhone");
   if (nearest.tel) {
-    phoneLink.textContent = nearest.tel;
+    $("pPhoneTxt").textContent = nearest.tel;
     phoneLink.href = "tel:" + nearest.tel;
   } else {
-    phoneLink.textContent = "-";
+    $("pPhoneTxt").textContent = "-";
     phoneLink.removeAttribute("href");
   }
   $("pMap").href = dirUrl(nearest);
@@ -588,11 +599,11 @@ function renderResult(nearest, others) {
       actions.className = "actions";
       if (p.harita) {
         const mapA = document.createElement("a");
-        mapA.className = "act";
+        mapA.className = "act act-dir";
         mapA.href = dirUrl(p);
         mapA.target = "_blank";
         mapA.rel = "noopener";
-        mapA.innerHTML = "🗺️ <span>Yol tarifi al</span>";
+        mapA.innerHTML = MAP_ICO + "<span>Yol tarifi al</span>";
         actions.appendChild(mapA);
       }
       if (p.tel) {
