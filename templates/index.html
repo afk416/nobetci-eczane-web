@@ -309,7 +309,11 @@
   #backToList:active { transform: scale(0.97); }
   .back-ico { width: 18px; height: 18px; display: block; }
 
-  /* Eczane marker'ı: yanıp sönen kırmızı E (ana sayfadaki logoyla aynı) */
+  /* Eczane marker'ı: yanıp sönen kırmızı E (ana sayfadaki logoyla aynı).
+     ÖNEMLİ: animasyon (transform: scale) İÇ öğede; dış sarmalayıcıyı MapLibre
+     transform: translate ile konumlandırır — ikisi aynı öğede olursa çakışır. */
+  .map-e-wrap { cursor: pointer; line-height: 0; }
+  .map-e-wrap.nearest { z-index: 3; }
   .map-e {
     display: flex;
     align-items: center;
@@ -326,14 +330,12 @@
     font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
     box-shadow: 0 0 0 0 rgba(211,47,47,0.7), 0 2px 6px rgba(0,0,0,0.35);
     animation: e-pulse 1.6s ease-in-out infinite;
-    cursor: pointer;
   }
-  .map-e.nearest {
+  .map-e-wrap.nearest .map-e {
     width: 44px;
     height: 44px;
     font-size: 27px;
     border-radius: 9px;
-    z-index: 3;
   }
 
   /* Kullanıcı konumu: mavi nokta + genişleyen halka */
@@ -614,8 +616,11 @@ function renderResult(nearest, others) {
 // ---- Harita ikon yardımcıları (MapLibre marker = DOM element) ----
 function makePharmacyEl(isNearest) {
   const el = document.createElement("div");
-  el.className = "map-e" + (isNearest ? " nearest" : "");
-  el.textContent = "E";
+  el.className = "map-e-wrap" + (isNearest ? " nearest" : "");
+  const inner = document.createElement("div");
+  inner.className = "map-e";
+  inner.textContent = "E";
+  el.appendChild(inner);
   return el;
 }
 function makeUserEl() {
