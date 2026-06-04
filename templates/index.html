@@ -135,7 +135,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .e-logo { animation: none; }
-    .map-e, .user-dot { animation: none; }
+    .map-e, .user-dot, .map-e-label.nearest { animation: none; }
     .user-ripple { display: none; }
     .result { animation: none; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 10px 1px rgba(22,163,74,0.12); }
   }
@@ -325,20 +325,32 @@
   .map-e-wrap.nearest { z-index: 3; }
   /* E logosunun altındaki eczane adı etiketi (ayrı marker) */
   .map-e-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
     background: rgba(255,255,255,0.95);
     color: #1f2d3a;
     font-size: 11px;
     font-weight: 700;
     line-height: 1.15;
     letter-spacing: 0.2px;
-    padding: 2px 6px;
+    padding: 3px 8px;
     border-radius: 6px;
     white-space: nowrap;
     box-shadow: 0 1px 4px rgba(0,0,0,0.28);
     border: 1px solid rgba(0,0,0,0.06);
     pointer-events: none;
   }
-  .map-e-label.nearest { font-size: 13px; color: #15803d; }
+  .map-e-label.nearest {
+    font-size: 13px;
+    color: #15803d;
+    animation: labelGlow 1.6s ease-in-out infinite;
+  }
+  @keyframes labelGlow {
+    0%, 100% { text-shadow: 0 0 2px rgba(21,128,61,0.45); }
+    50%      { text-shadow: 0 0 8px rgba(34,197,94,0.95), 0 0 14px rgba(21,128,61,0.7); }
+  }
   .map-e {
     display: flex;
     align-items: center;
