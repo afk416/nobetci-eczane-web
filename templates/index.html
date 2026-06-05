@@ -603,57 +603,57 @@ async function getPharmaciesForLocation(lat, lng) {
 }
 
 function getLocation() {
-  // Telefonun İLK konum okuması çoğu zaman baz-istasyonu/Wi-Fi tabanlı ve
-  // kaba olur (bazen yüzlerce km sapar -> yanlış il). Bu yüzden tek okuma
-  // yerine watchPosition ile birkaç saniye dinleyip yeterince HASSAS
-  // (<=150 m) ilk fix'i alırız; gelmezse süre sonunda en iyisini kullanırız.
+  // Telefonun İLK okuması kaba olabilir (yanlış il). watchPosition ile
+  // dinleriz: yeterince hassas (<=500m) fix gelince HEMEN kullanırız (hız).
+  // İki ayrı süre: YUMUŞAK (5s) -> eldeki en iyi fix'i kullan; SERT (15s) ->
+  // konum gerçekten hiç gelmezse hata ver. Böylece GPS yavaşken erkenden
+  // "zaman aşımı" hatası vermez.
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error("Tarayıcın konum özelliğini desteklemiyor."));
       return;
     }
-    const GOOD_ACCURACY = 500; // m — il tespiti için yeterli, sınır bölgelerinde daha güvenli; gelince hemen kullan
-    const MAX_WAIT = 4000;     // ms — en geç bu kadar bekle, sonra en iyi fix'i al
-    let best = null, watchId = null, timer = null, done = false;
+    const GOOD_ACCURACY = 500;   // m — bu hassasiyete ulaşınca hemen kullan
+    const SOFT_WAIT = 5000;      // ms — bu süre sonunda eldeki en iyi fix'i kullan (varsa)
+    const HARD_TIMEOUT = 15000;  // ms — konum hiç alınamazsa bu sürede hata ver
+    let best = null, watchId = null, softTimer = null, softPassed = false, done = false;
 
-    const finish = () => {
-      if (done) return;
+    const resolveWithBest = () => {
+      if (done || !best) return;
       done = true;
-      if (timer) clearTimeout(timer);
+      if (softTimer) clearTimeout(softTimer);
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-      if (best) {
-        _lastLoc = {
-          lat: best.coords.latitude,
-          lng: best.coords.longitude,
-          accuracy: best.coords.accuracy
-        };
-        resolve({ lat: best.coords.latitude, lng: best.coords.longitude });
-      } else {
-        reject(new Error("Konum alınamadı. GPS/internet bağlantını kontrol et."));
-      }
+      _lastLoc = {
+        lat: best.coords.latitude,
+        lng: best.coords.longitude,
+        accuracy: best.coords.accuracy
+      };
+      resolve({ lat: best.coords.latitude, lng: best.coords.longitude });
     };
 
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
-        if (best.coords.accuracy <= GOOD_ACCURACY) finish();
+        // yeterince hassas VEYA yumuşak süre dolduysa eldekini kullan
+        if (best.coords.accuracy <= GOOD_ACCURACY || softPassed) resolveWithBest();
       },
       (err) => {
-        if (best) { finish(); return; }  // elde fix varsa hatayı yut
         if (done) return;
+        if (best) { resolveWithBest(); return; }  // elde fix varsa onu kullan
         done = true;
-        if (timer) clearTimeout(timer);
+        if (softTimer) clearTimeout(softTimer);
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         const messages = {
           1: "Konum izni reddedildi. Tarayıcı ayarlarından izin vermen gerekiyor.",
           2: "Konum alınamadı. GPS/internet bağlantını kontrol et.",
-          3: "Konum alma zaman aşımına uğradı."
+          3: "Konum alınamadı. Açık alanda olduğundan emin olup tekrar dene."
         };
         reject(new Error(messages[err.code] || "Konum hatası: " + err.message));
       },
-      { enableHighAccuracy: true, timeout: MAX_WAIT, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: HARD_TIMEOUT, maximumAge: 30000 }
     );
-    timer = setTimeout(finish, MAX_WAIT);
+    // Yumuşak süre: eldeki en iyi fix'i kullan; fix yoksa beklemeye DEVAM et
+    softTimer = setTimeout(() => { softPassed = true; resolveWithBest(); }, SOFT_WAIT);
   });
 }
 
