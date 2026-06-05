@@ -563,18 +563,23 @@ function formatDist(km) {
 }
 // Google Maps yol tarifi (kullanıcı konumundan eczaneye)
 function dirUrl(p) {
-  // Ham koordinata gidince Google iğneyi tam o noktaya koyuyor; kaynak pin
-  // birkaç metre kayıksa yan binaya düşüyor. Bunun yerine ad + adres ile
-  // arat: Google kayıtlı eczane işletmesine "snap"ler (doğru pin). Ad/adres
-  // yoksa koordinata düş.
+  // BAŞLANGIÇ (origin): kullanıcının GERÇEK GPS konumu. Belirtmezsek Google
+  // Maps başlangıcı kendi IP tahminiyle koyar -> mobil operatör IP'si yanlış
+  // ile (örn. Kayseri/Talas) düşebilir. Bizde doğru koordinat var, onu veririz.
+  let base = "https://www.google.com/maps/dir/?api=1";
+  if (_lastLoc && _lastLoc.lat != null && _lastLoc.lng != null) {
+    base += "&origin=" + _lastLoc.lat + "," + _lastLoc.lng;
+  }
+  // HEDEF (destination): ham koordinat yerine ad + adres ile arat ki Google
+  // kayıtlı eczane işletmesine "snap"lesin (yan binaya gitmesin).
   const ad = (p && p.ad) ? pharmacyName(p.ad) : "";
   const adres = (p && p.adres) || "";
   const q = [ad, adres].filter(Boolean).join(" ").trim();
   if (q) {
-    return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(q);
+    return base + "&destination=" + encodeURIComponent(q);
   }
   if (p && p.lat != null && p.lng != null) {
-    return "https://www.google.com/maps/dir/?api=1&destination=" + p.lat + "," + p.lng;
+    return base + "&destination=" + p.lat + "," + p.lng;
   }
   return (p && p.harita) || "#";
 }
