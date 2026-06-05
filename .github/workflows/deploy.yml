@@ -1,0 +1,29 @@
+name: Deploy to Hetzner
+
+# main'e her push'ta (veya elle tetikleyince) sunucuya otomatik deploy eder.
+# Gerekli repo secret'ları (Settings > Secrets and variables > Actions):
+#   HETZNER_HOST      -> 95.216.151.219
+#   HETZNER_USER      -> root
+#   HETZNER_PASSWORD  -> Hetzner root parolası
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH ile deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          password: ${{ secrets.HETZNER_PASSWORD }}
+          script: |
+            set -e
+            sudo -u nobetcim bash -lc 'cd /opt/nobetcim && git fetch --all && git reset --hard origin/main'
+            sudo -u nobetcim bash -lc 'cd /opt/nobetcim && .venv/bin/pip install -r requirements.txt --quiet' || true
+            systemctl restart nobetcim-web nobetcim-bot
+            sleep 3
+            systemctl is-active nobetcim-web nobetcim-bot
