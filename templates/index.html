@@ -735,7 +735,7 @@ function getLocation() {
         if (softTimer) clearTimeout(softTimer);
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         const messages = {
-          1: "Konum izni reddedildi. Tarayıcı ayarlarından izin vermen gerekiyor.",
+          1: "Konum izni kapalı. Adres çubuğundaki 🔒 (site) simgesine dokun → Konum → İzin Ver, sonra tekrar dene.",
           2: "Konum alınamadı. GPS/internet bağlantını kontrol et.",
           3: "Konum alınamadı. Açık alanda olduğundan emin olup tekrar dene."
         };
