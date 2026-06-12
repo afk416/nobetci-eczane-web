@@ -220,6 +220,8 @@
     text-align: center;
     min-height: 20px;
   }
+  /* Boşken yer ayırma -> kart dikeyde dengeli görünsün */
+  .status:empty { margin-top: 0; min-height: 0; }
   .status.error { color: #c23a3a; }
 
   /* En yakın eczane kartı: hafif yeşil zemin + nazik nabız gibi parlama */
@@ -307,8 +309,9 @@
   .hidden { display: none !important; }
 
   /* Ana ekrana ekle butonu (Bul + Harita satırının altında, ortalı) */
-  .install-row { text-align: center; margin-top: 12px; }
+  .install-row { text-align: center; }
   .install-btn {
+    margin-top: 12px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
