@@ -306,12 +306,9 @@
   }
   .hidden { display: none !important; }
 
-  /* Ana ekrana ekle butonu (sağ üst) */
+  /* Ana ekrana ekle butonu (Bul + Harita satırının altında, ortalı) */
+  .install-row { text-align: center; margin-top: 12px; }
   .install-btn {
-    position: fixed;
-    top: 12px;
-    right: 12px;
-    z-index: 1500;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -328,9 +325,8 @@
   .install-btn:hover { background: var(--accent-dark); }
   .install-btn:active { transform: scale(0.96); }
   .install-ico { width: 16px; height: 16px; flex: 0 0 auto; }
-  body.map-open .install-btn { display: none !important; }
   @media (max-width: 480px) {
-    .install-btn { top: 10px; right: 10px; padding: 7px 12px; font-size: 12px; }
+    .install-btn { padding: 7px 12px; font-size: 12px; }
     .install-ico { width: 15px; height: 15px; }
   }
   /* iPhone talimat kutusu */
@@ -529,13 +525,6 @@
 </style>
 </head>
 <body>
-<!-- Ana ekrana ekle butonu (sağ üst) -->
-<button id="installBtn" class="install-btn hidden" aria-label="Uygulamayı ana ekrana ekle">
-  <svg class="install-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M12 5v14M5 12l7 7 7-7"/>
-  </svg>
-  <span>Ana Ekrana Ekle</span>
-</button>
 <!-- iPhone için talimat kutusu (Apple programdan kuruluma izin vermez) -->
 <div id="iosHint" class="ios-hint hidden">
   <div class="ios-hint-box">
@@ -568,6 +557,14 @@
           <line x1="16" y1="6" x2="16" y2="21"/>
         </svg>
         <span>Harita</span>
+      </button>
+    </div>
+    <div class="install-row">
+      <button id="installBtn" class="install-btn hidden" aria-label="Uygulamayı ana ekrana ekle">
+        <svg class="install-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12l7 7 7-7"/>
+        </svg>
+        <span>Ana Ekrana Ekle</span>
       </button>
     </div>
     <div id="status" class="status"></div>
