@@ -332,6 +332,26 @@
     .install-btn { padding: 7px 12px; font-size: 12px; }
     .install-ico { width: 15px; height: 15px; }
   }
+  /* Konum çalışmazsa il seçme yedeği */
+  .manual-row {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .manual-label { font-size: 13px; color: var(--muted); }
+  .il-select {
+    font-size: 14px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--text);
+    max-width: 200px;
+    cursor: pointer;
+  }
   /* iPhone talimat kutusu */
   .ios-hint {
     position: fixed;
@@ -570,6 +590,12 @@
         <span>Ana Ekrana Ekle</span>
       </button>
     </div>
+    <div class="manual-row">
+      <span class="manual-label">Konum çalışmıyor mu? İlini seç:</span>
+      <select id="ilSelect" class="il-select" aria-label="İl seç">
+        <option value="">İl seçin…</option>
+      </select>
+    </div>
     <div id="status" class="status"></div>
   </div>
 
@@ -595,7 +621,7 @@
     </div>
 
     <div id="othersCard" class="card others hidden">
-      <h3>Diğer nöbetçi eczaneler</h3>
+      <h3 id="othersTitle">Diğer nöbetçi eczaneler</h3>
       <ul id="othersList"></ul>
     </div>
   </div>
@@ -627,6 +653,7 @@ let _mapInstance = null;
 let _markers = [];
 let _lastGeo = null;
 let _lastLoc = null;
+let _manualIl = null;   // il elle seçildiyse (konum yok) il adı; yoksa null
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -749,6 +776,8 @@ function getLocation() {
 }
 
 function renderResult(nearest, others) {
+  const _ot = $("othersTitle");
+  if (_ot) _ot.textContent = "Diğer nöbetçi eczaneler";
   $("pName").innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(nearest.ad) + (nearest.ilce ? " (" + nearest.ilce + ")" : ""));
   $("pDistance").textContent = "📏 " + formatDist(nearest._km);
   $("pAddress").textContent = nearest.adres || "-";
@@ -851,27 +880,33 @@ function placeMapMarkers() {
   _markers.forEach(m => m.remove());
   _markers = [];
 
-  const userMarker = new maplibregl.Marker({ element: makeUserEl(), anchor: "center" })
-    .setLngLat([_lastLoc.lng, _lastLoc.lat])
-    .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML("📍 Buradasın"))
-    .addTo(_mapInstance);
-  _markers.push(userMarker);
+  const bounds = new maplibregl.LngLatBounds();
 
-  // Konum ikonunun altında "KONUMUNUZ" etiketi (ayrı marker)
-  const userLabelEl = document.createElement("div");
-  userLabelEl.className = "map-e-label user-label";
-  userLabelEl.textContent = "KONUMUNUZ";
-  const userLabel = new maplibregl.Marker({ element: userLabelEl, anchor: "top", offset: [0, 14] })
-    .setLngLat([_lastLoc.lng, _lastLoc.lat])
-    .addTo(_mapInstance);
-  _markers.push(userLabel);
+  // Kullanıcı konumu varsa göster (elle il seçildiyse konum yoktur)
+  if (_lastLoc) {
+    const userMarker = new maplibregl.Marker({ element: makeUserEl(), anchor: "center" })
+      .setLngLat([_lastLoc.lng, _lastLoc.lat])
+      .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML("📍 Buradasın"))
+      .addTo(_mapInstance);
+    _markers.push(userMarker);
+
+    const userLabelEl = document.createElement("div");
+    userLabelEl.className = "map-e-label user-label";
+    userLabelEl.textContent = "KONUMUNUZ";
+    const userLabel = new maplibregl.Marker({ element: userLabelEl, anchor: "top", offset: [0, 14] })
+      .setLngLat([_lastLoc.lng, _lastLoc.lat])
+      .addTo(_mapInstance);
+    _markers.push(userLabel);
+    bounds.extend([_lastLoc.lng, _lastLoc.lat]);
+  }
 
   _lastGeo.forEach((p, i) => {
-    const isNearest = i === 0;
+    const isNearest = !!_lastLoc && i === 0;   // "en yakın" yalnız konum varken
     const phoneHtml = p.tel ? `📞 <a href="tel:${p.tel}">${p.tel}</a>` : "";
+    const distHtml = (p._km != null) ? `<div class="pop-meta">📏 ${formatDist(p._km)}</div>` : "";
     const popupHtml = `
       <div class="pop-name">${isNearest ? "🟢 EN YAKIN — " : ""}<span class="e-badge">E</span>${escapeHtml(pharmacyName(p.ad))}</div>
-      <div class="pop-meta">📏 ${formatDist(p._km)}</div>
+      ${distHtml}
       <div class="pop-meta">${escapeHtml(p.adres || "-")}</div>
       <div style="margin-top:6px;">${phoneHtml}</div>
       <div style="margin-top:4px;"><a href="${dirUrl(p)}" target="_blank" rel="noopener">🗺️ Yol tarifi al</a></div>
@@ -889,22 +924,28 @@ function placeMapMarkers() {
       offset: [0, isNearest ? 25 : 19],
     }).setLngLat([p.lng, p.lat]).addTo(_mapInstance);
     _markers.push(labelMarker);
+    bounds.extend([p.lng, p.lat]);
   });
 
-  // Yakın açılış: tüm 30 km'yi değil, kullanıcı + en yakın eczaneyi sığdır.
-  const focus = new maplibregl.LngLatBounds();
-  focus.extend([_lastLoc.lng, _lastLoc.lat]);
-  focus.extend([_lastGeo[0].lng, _lastGeo[0].lat]);
-  _mapInstance.fitBounds(focus, { padding: 110, maxZoom: 16, duration: 0 });
+  // Odak: konum varsa kullanıcı + en yakın; yoksa (elle il) tüm eczaneleri sığdır.
+  if (_lastLoc && _lastGeo.length) {
+    const focus = new maplibregl.LngLatBounds();
+    focus.extend([_lastLoc.lng, _lastLoc.lat]);
+    focus.extend([_lastGeo[0].lng, _lastGeo[0].lat]);
+    _mapInstance.fitBounds(focus, { padding: 110, maxZoom: 16, duration: 0 });
+  } else if (_lastGeo.length) {
+    _mapInstance.fitBounds(bounds, { padding: 50, maxZoom: 14, duration: 0 });
+  }
 }
 
 function renderMap() {
-  if (!_lastGeo || !_lastLoc) return;
+  if (!_lastGeo || !_lastGeo.length) return;
   if (!_mapInstance) {
+    const center = _lastLoc ? [_lastLoc.lng, _lastLoc.lat] : [_lastGeo[0].lng, _lastGeo[0].lat];
     _mapInstance = new maplibregl.Map({
       container: "map",
       style: OFM_STYLE,
-      center: [_lastLoc.lng, _lastLoc.lat],
+      center: center,
       zoom: 14,
       attributionControl: { compact: true },
     });
@@ -923,6 +964,7 @@ function renderMap() {
 
 // ---- Ortak akış: konum + eczaneler ----
 async function fetchAndRank() {
+  _manualIl = null;               // konumla arama -> elle-il modundan çık
   const loc = await getLocation();
   setStatus("Bölgenizdeki nöbetçi eczaneler aranıyor...");
   const resp = await getPharmaciesForLocation(loc.lat, loc.lng);
@@ -975,22 +1017,32 @@ findBtn.addEventListener("click", async () => {
   }
 });
 
+// Harita görünümünü aç (liste gizle, geçmiş adımı ekle, scroll kilidi)
+function openMapView() {
+  listView.classList.add("hidden");
+  mapView.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  document.body.classList.add("map-open");
+  if (!(history.state && history.state.nbMap)) {
+    history.pushState({ nbMap: 1 }, "");
+  }
+}
+
 // ---- HARİTA BUTONU ----
 mapBtn.addEventListener("click", async () => {
+  // Elle il seçildiyse (konum yok) doğrudan o ilin haritasını göster
+  if (_manualIl && _lastGeo && _lastGeo.length) {
+    openMapView();
+    renderMap();
+    return;
+  }
   findBtn.disabled = true;
   mapBtn.disabled = true;
   setStatus("Konum alınıyor...");
   try {
     const { geo, withinRadius, nearestKm } = await fetchAndRank();
     showStatusMsg(withinRadius, nearestKm);
-    listView.classList.add("hidden");
-    mapView.classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    document.body.classList.add("map-open");
-    // Geçmişe bir adım ekle ki telefonun geri tuşu siteden çıkmasın, haritayı kapatsın
-    if (!(history.state && history.state.nbMap)) {
-      history.pushState({ nbMap: 1 }, "");
-    }
+    openMapView();
     renderMap();
   } catch (e) {
     setStatus(e.message, true);
@@ -1000,6 +1052,102 @@ mapBtn.addEventListener("click", async () => {
   }
 });
 
+// ---- ELLE İL SEÇME (konum çalışmazsa yedek) ----
+function renderManual(il, list) {
+  resultCard.classList.add("hidden");
+  const ot = $("othersTitle");
+  if (ot) ot.textContent = il + " — Nöbetçi Eczaneler (" + list.length + ")";
+  const othersList = $("othersList");
+  othersList.innerHTML = "";
+  list.forEach(p => {
+    const li = document.createElement("li");
+    const name = document.createElement("div");
+    name.className = "name";
+    name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(p.ad) + (p.ilce ? " (" + p.ilce + ")" : ""));
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = p.adres || "-";
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    if (p.harita || (p.lat && p.lng) || p.adres) {
+      const mapA = document.createElement("a");
+      mapA.className = "act act-dir";
+      mapA.href = dirUrl(p);
+      mapA.target = "_blank";
+      mapA.rel = "noopener";
+      mapA.innerHTML = MAP_ICO + "<span>Yol tarifi al</span>";
+      actions.appendChild(mapA);
+    }
+    if (p.tel) {
+      const telA = document.createElement("a");
+      telA.className = "act";
+      telA.href = "tel:" + p.tel;
+      telA.innerHTML = "📞 <span>" + escapeHtml(p.tel) + "</span>";
+      actions.appendChild(telA);
+    }
+    li.appendChild(name);
+    li.appendChild(meta);
+    li.appendChild(actions);
+    othersList.appendChild(li);
+  });
+  othersCard.classList.remove("hidden");
+}
+
+(function () {
+  var ilSelect = $("ilSelect");
+  if (!ilSelect) return;
+  var PROVINCES = [
+    "Adana","Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya","Ankara","Antalya",
+    "Ardahan","Artvin","Aydın","Balıkesir","Bartın","Batman","Bayburt","Bilecik","Bingöl",
+    "Bitlis","Bolu","Burdur","Bursa","Çanakkale","Çankırı","Çorum","Denizli","Diyarbakır",
+    "Düzce","Edirne","Elazığ","Erzincan","Erzurum","Eskişehir","Gaziantep","Giresun",
+    "Gümüşhane","Hakkari","Hatay","Iğdır","Isparta","İstanbul","İzmir","Kahramanmaraş",
+    "Karabük","Karaman","Kars","Kastamonu","Kayseri","Kilis","Kırıkkale","Kırklareli",
+    "Kırşehir","Kocaeli","Konya","Kütahya","Malatya","Manisa","Mardin","Mersin","Muğla",
+    "Muş","Nevşehir","Niğde","Ordu","Osmaniye","Rize","Sakarya","Samsun","Siirt","Sinop",
+    "Sivas","Şanlıurfa","Şırnak","Tekirdağ","Tokat","Trabzon","Tunceli","Uşak","Van",
+    "Yalova","Yozgat","Zonguldak"
+  ].sort(function (a, b) { return a.localeCompare(b, "tr"); });
+  PROVINCES.forEach(function (name) {
+    var o = document.createElement("option");
+    o.value = name;
+    o.textContent = name;
+    ilSelect.appendChild(o);
+  });
+
+  ilSelect.addEventListener("change", async function () {
+    var il = ilSelect.value;
+    if (!il) return;
+    findBtn.disabled = true;
+    mapBtn.disabled = true;
+    resultCard.classList.add("hidden");
+    othersCard.classList.add("hidden");
+    mapView.classList.add("hidden");
+    listView.classList.remove("hidden");
+    setStatus(il + " nöbetçi eczaneler yükleniyor…");
+    try {
+      var r = await fetch("/api/pharmacies?il=" + encodeURIComponent(il) + "&_=" + Date.now(), {
+        cache: "no-store", headers: { "Cache-Control": "no-cache" }
+      });
+      if (!r.ok) throw new Error("Veri alınamadı (HTTP " + r.status + ")");
+      var resp = await r.json();
+      if (resp.error) throw new Error(resp.error);
+      var list = (resp.pharmacies || []).filter(function (p) { return p.ad; });
+      if (!list.length) throw new Error(il + " için bugün nöbetçi eczane verisi bulunamadı.");
+      _manualIl = il;
+      _lastLoc = null;                                            // konum yok -> mesafe yok
+      _lastGeo = list.filter(function (p) { return p.lat && p.lng; });  // haritaya koordinatlılar
+      setStatus("📋 " + il + " — " + list.length + " nöbetçi eczane");
+      renderManual(il, list);
+    } catch (e) {
+      setStatus(e.message, true);
+    } finally {
+      findBtn.disabled = false;
+      mapBtn.disabled = false;
+    }
+  });
+})();
+
 // ---- LİSTEYE DÖN ----
 // Haritayı kapatıp ana sayfaya (liste görünümüne) dön
 function closeMap() {
@@ -1007,8 +1155,9 @@ function closeMap() {
   document.body.classList.remove("map-open");
   mapView.classList.add("hidden");
   listView.classList.remove("hidden");
-  // Eğer önceden liste render edilmediyse render et
-  if (_lastGeo && resultCard.classList.contains("hidden")) {
+  // Eğer önceden liste render edilmediyse render et (elle-il modunda liste
+  // zaten othersCard'da hazır; renderResult mesafe beklediği için çağırma)
+  if (!_manualIl && _lastGeo && resultCard.classList.contains("hidden")) {
     renderResult(_lastGeo[0], _lastGeo.slice(1));
   }
   window.scrollTo(0, 0);
