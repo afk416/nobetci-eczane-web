@@ -352,6 +352,34 @@
     max-width: 200px;
     cursor: pointer;
   }
+  /* İl seçince üstte çıkan il adı kutusu */
+  .il-header {
+    background: #e7f1f7;
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .il-header .il-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--accent-dark);
+    letter-spacing: 0.5px;
+  }
+  .il-header .il-count { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  /* İlçe başlığı (il seçerek aramada) */
+  .others li.ilce-head {
+    border-top: none;
+    padding: 12px 0 4px;
+    margin-top: 4px;
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--accent);
+    border-bottom: 2px solid var(--border);
+  }
+  .others li.ilce-head:first-child { margin-top: 0; padding-top: 2px; }
+  .others li.ilce-head + li { border-top: none; }
   /* iPhone talimat kutusu */
   .ios-hint {
     position: fixed;
@@ -621,6 +649,7 @@
     </div>
 
     <div id="othersCard" class="card others hidden">
+      <div id="ilHeader" class="il-header hidden"></div>
       <h3 id="othersTitle">Diğer nöbetçi eczaneler</h3>
       <ul id="othersList"></ul>
     </div>
@@ -777,7 +806,9 @@ function getLocation() {
 
 function renderResult(nearest, others) {
   const _ot = $("othersTitle");
-  if (_ot) _ot.textContent = "Diğer nöbetçi eczaneler";
+  if (_ot) { _ot.textContent = "Diğer nöbetçi eczaneler"; _ot.classList.remove("hidden"); }
+  const _ih = $("ilHeader");
+  if (_ih) _ih.classList.add("hidden");
   $("pName").innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(nearest.ad) + (nearest.ilce ? " (" + nearest.ilce + ")" : ""));
   $("pDistance").textContent = "📏 " + formatDist(nearest._km);
   $("pAddress").textContent = nearest.adres || "-";
@@ -1055,40 +1086,66 @@ mapBtn.addEventListener("click", async () => {
 // ---- ELLE İL SEÇME (konum çalışmazsa yedek) ----
 function renderManual(il, list) {
   resultCard.classList.add("hidden");
+  // Üstte il adı kutusu
+  const ih = $("ilHeader");
+  if (ih) {
+    ih.innerHTML = '<div class="il-name">' + escapeHtml(il.toLocaleUpperCase("tr")) + '</div>' +
+                   '<div class="il-count">' + list.length + ' nöbetçi eczane</div>';
+    ih.classList.remove("hidden");
+  }
   const ot = $("othersTitle");
-  if (ot) ot.textContent = il + " — Nöbetçi Eczaneler (" + list.length + ")";
+  if (ot) ot.classList.add("hidden");   // il kutusu başlığın yerini alır
+
   const othersList = $("othersList");
   othersList.innerHTML = "";
+
+  // İlçeye göre grupla
+  const groups = {};
+  const order = [];
   list.forEach(p => {
-    const li = document.createElement("li");
-    const name = document.createElement("div");
-    name.className = "name";
-    name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(p.ad) + (p.ilce ? " (" + p.ilce + ")" : ""));
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent = p.adres || "-";
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    if (p.harita || (p.lat && p.lng) || p.adres) {
-      const mapA = document.createElement("a");
-      mapA.className = "act act-dir";
-      mapA.href = dirUrl(p);
-      mapA.target = "_blank";
-      mapA.rel = "noopener";
-      mapA.innerHTML = MAP_ICO + "<span>Yol tarifi al</span>";
-      actions.appendChild(mapA);
-    }
-    if (p.tel) {
-      const telA = document.createElement("a");
-      telA.className = "act";
-      telA.href = "tel:" + p.tel;
-      telA.innerHTML = "📞 <span>" + escapeHtml(p.tel) + "</span>";
-      actions.appendChild(telA);
-    }
-    li.appendChild(name);
-    li.appendChild(meta);
-    li.appendChild(actions);
-    othersList.appendChild(li);
+    const d = ((p.ilce || "").trim()) || "Diğer";
+    if (!groups[d]) { groups[d] = []; order.push(d); }
+    groups[d].push(p);
+  });
+  order.sort((a, b) => a.localeCompare(b, "tr"));
+
+  order.forEach(d => {
+    const head = document.createElement("li");
+    head.className = "ilce-head";
+    head.textContent = d;
+    othersList.appendChild(head);
+    groups[d].forEach(p => {
+      const li = document.createElement("li");
+      const name = document.createElement("div");
+      name.className = "name";
+      // İlçe parantezi YOK (zaten ilçe başlığı altında)
+      name.innerHTML = '<span class="e-badge">E</span>' + escapeHtml(pharmacyName(p.ad));
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = p.adres || "-";
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      if (p.harita || (p.lat && p.lng) || p.adres) {
+        const mapA = document.createElement("a");
+        mapA.className = "act act-dir";
+        mapA.href = dirUrl(p);
+        mapA.target = "_blank";
+        mapA.rel = "noopener";
+        mapA.innerHTML = MAP_ICO + "<span>Yol tarifi al</span>";
+        actions.appendChild(mapA);
+      }
+      if (p.tel) {
+        const telA = document.createElement("a");
+        telA.className = "act";
+        telA.href = "tel:" + p.tel;
+        telA.innerHTML = "📞 <span>" + escapeHtml(p.tel) + "</span>";
+        actions.appendChild(telA);
+      }
+      li.appendChild(name);
+      li.appendChild(meta);
+      li.appendChild(actions);
+      othersList.appendChild(li);
+    });
   });
   othersCard.classList.remove("hidden");
 }
