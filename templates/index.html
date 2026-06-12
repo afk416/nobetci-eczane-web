@@ -306,6 +306,76 @@
   }
   .hidden { display: none !important; }
 
+  /* Ana ekrana ekle butonu (sağ üst) */
+  .install-btn {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 1500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 9999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.22);
+    cursor: pointer;
+  }
+  .install-btn:hover { background: var(--accent-dark); }
+  .install-btn:active { transform: scale(0.96); }
+  .install-ico { width: 16px; height: 16px; flex: 0 0 auto; }
+  body.map-open .install-btn { display: none !important; }
+  @media (max-width: 480px) {
+    .install-btn { top: 10px; right: 10px; padding: 7px 12px; font-size: 12px; }
+    .install-ico { width: 15px; height: 15px; }
+  }
+  /* iPhone talimat kutusu */
+  .ios-hint {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 2000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .ios-hint-box {
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    padding: 22px 20px 30px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 -6px 24px rgba(0,0,0,0.25);
+    animation: fadeIn 0.25s ease both;
+  }
+  .ios-hint-box p { margin: 8px 0; font-size: 15px; color: var(--text); }
+  .ios-hint-logo {
+    font-weight: 800;
+    color: var(--accent);
+    font-size: 17px;
+    margin-bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ios-hint-close {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    background: none;
+    border: none;
+    font-size: 26px;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
   /* ---- Harita (tam ekran) ---- */
   #mapView {
     position: fixed;
@@ -459,6 +529,22 @@
 </style>
 </head>
 <body>
+<!-- Ana ekrana ekle butonu (sağ üst) -->
+<button id="installBtn" class="install-btn hidden" aria-label="Uygulamayı ana ekrana ekle">
+  <svg class="install-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 5v14M5 12l7 7 7-7"/>
+  </svg>
+  <span>Ana Ekrana Ekle</span>
+</button>
+<!-- iPhone için talimat kutusu (Apple programdan kuruluma izin vermez) -->
+<div id="iosHint" class="ios-hint hidden">
+  <div class="ios-hint-box">
+    <button id="iosHintClose" class="ios-hint-close" aria-label="Kapat">×</button>
+    <div class="ios-hint-logo"><span class="e-badge">E</span>Nobetcim'i ana ekrana ekle</div>
+    <p>1. Aşağıdaki <strong>Paylaş</strong> <span style="font-size:18px">⬆️</span> butonuna bas</p>
+    <p>2. <strong>"Ana Ekrana Ekle"</strong> seç</p>
+  </div>
+</div>
 <div class="app">
   <header>
     <h1>
@@ -900,6 +986,7 @@ mapBtn.addEventListener("click", async () => {
     listView.classList.add("hidden");
     mapView.classList.remove("hidden");
     document.body.style.overflow = "hidden";
+    document.body.classList.add("map-open");
     // Geçmişe bir adım ekle ki telefonun geri tuşu siteden çıkmasın, haritayı kapatsın
     if (!(history.state && history.state.nbMap)) {
       history.pushState({ nbMap: 1 }, "");
@@ -917,6 +1004,7 @@ mapBtn.addEventListener("click", async () => {
 // Haritayı kapatıp ana sayfaya (liste görünümüne) dön
 function closeMap() {
   document.body.style.overflow = "";
+  document.body.classList.remove("map-open");
   mapView.classList.add("hidden");
   listView.classList.remove("hidden");
   // Eğer önceden liste render edilmediyse render et
@@ -949,6 +1037,60 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(function () {});
   });
 }
+</script>
+<script>
+// ---- Ana ekrana ekle (PWA kurulum) ----
+(function () {
+  var installBtn = document.getElementById("installBtn");
+  if (!installBtn) return;
+  var iosHint = document.getElementById("iosHint");
+  var iosHintClose = document.getElementById("iosHintClose");
+
+  // Zaten uygulama olarak (standalone) açıldıysa butonu hiç gösterme
+  var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+                   || window.navigator.standalone === true;
+  if (standalone) return;
+
+  var ua = window.navigator.userAgent || "";
+  var isIOS = /iPhone|iPad|iPod/.test(ua);
+  var isSafari = /safari/i.test(ua) && !/(crios|fxios|edgios|chrome|android)/i.test(ua);
+  var deferred = null;
+
+  // Android / masaüstü Chrome-Edge: gerçek kurulum istemi yakalanır
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferred = e;
+    installBtn.classList.remove("hidden");
+  });
+  window.addEventListener("appinstalled", function () {
+    installBtn.classList.add("hidden");
+    deferred = null;
+  });
+
+  installBtn.addEventListener("click", function () {
+    if (deferred) {
+      // Android/masaüstü: tek tıkla native kurulum penceresi
+      deferred.prompt();
+      if (deferred.userChoice && deferred.userChoice.then) {
+        deferred.userChoice.then(function () {}).catch(function () {}).then(function () {
+          deferred = null;
+          installBtn.classList.add("hidden");
+        });
+      }
+    } else if (isIOS && iosHint) {
+      // iPhone: Apple programdan kuruluma izin vermez -> talimat göster
+      iosHint.classList.remove("hidden");
+    }
+  });
+
+  // iPhone Safari'de beforeinstallprompt yok; butonu talimat için göster
+  if (isIOS && isSafari) {
+    installBtn.classList.remove("hidden");
+  }
+
+  if (iosHintClose) iosHintClose.addEventListener("click", function () { iosHint.classList.add("hidden"); });
+  if (iosHint) iosHint.addEventListener("click", function (e) { if (e.target === iosHint) iosHint.classList.add("hidden"); });
+})();
 </script>
 </body>
 </html>
