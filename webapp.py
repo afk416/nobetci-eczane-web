@@ -1,12 +1,41 @@
 """Nobetcim — Türkiye geneli nöbetçi eczane web servisi."""
 import logging
 import os
+import subprocess
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from pharmacy_scraper import fetch_pharmacies, get_location_info
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+_REPO_DIR = os.path.dirname(__file__)
+
+_TR_MONTHS = [
+    "", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+]
+
+
+def _last_update_date() -> str:
+    """Son güncelleme tarihi = en son git commit (= her deploy) tarihi (TR).
+
+    Servis her deploy'da yeniden başladığı için başlangıçta bir kez hesaplanır.
+    git okunamazsa makul bir yedeğe düşer.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", _REPO_DIR, "log", "-1", "--format=%cI"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        dt = datetime.fromisoformat(out)
+        return f"{dt.day} {_TR_MONTHS[dt.month]} {dt.year}"
+    except Exception:
+        now = datetime.now(timezone.utc)
+        return f"{now.day} {_TR_MONTHS[now.month]} {now.year}"
+
+
+LAST_UPDATE = _last_update_date()
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -53,7 +82,7 @@ def index():
 
 @app.route("/gizlilik")
 def gizlilik():
-    return render_template("gizlilik.html")
+    return render_template("gizlilik.html", last_update=LAST_UPDATE)
 
 
 @app.route("/kullanim")
