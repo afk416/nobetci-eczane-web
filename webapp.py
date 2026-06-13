@@ -87,7 +87,7 @@ def gizlilik():
 
 @app.route("/kullanim")
 def kullanim():
-    return render_template("kullanim.html")
+    return render_template("kullanim.html", last_update=LAST_UPDATE)
 
 
 @app.route("/sw.js")
