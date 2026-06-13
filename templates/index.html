@@ -342,16 +342,64 @@
     flex-wrap: wrap;
   }
   .manual-label { font-size: 13px; color: var(--muted); }
-  .il-select {
+  /* Arama kutulu (mercekli) il seçici */
+  .il-picker { position: relative; display: inline-block; }
+  .il-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 170px;
     font-size: 14px;
     padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: #fff;
     color: var(--text);
-    max-width: 200px;
     cursor: pointer;
   }
+  .il-caret { color: var(--muted); font-size: 12px; }
+  .il-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 250px;
+    max-width: 82vw;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    z-index: 1200;
+    overflow: hidden;
+  }
+  .il-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .il-search-ico { width: 18px; height: 18px; color: var(--muted); flex: 0 0 auto; }
+  .il-search {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    font-size: 15px;
+    color: var(--text);
+    background: transparent;
+  }
+  .il-options { list-style: none; margin: 0; padding: 4px 0; max-height: 260px; overflow-y: auto; }
+  .il-options li {
+    padding: 9px 14px;
+    font-size: 15px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .il-options li:hover, .il-options li.active { background: #e7f1f7; }
+  .il-options li.empty { color: var(--muted); cursor: default; text-align: center; }
   /* İl seçince üstte çıkan il adı kutusu */
   .il-header {
     background: #e7f1f7;
@@ -642,9 +690,21 @@
     </div>
     <div class="manual-row">
       <span class="manual-label">Konum çalışmıyor mu? İlini seç:</span>
-      <select id="ilSelect" class="il-select" aria-label="İl seç">
-        <option value="">İl seçin…</option>
-      </select>
+      <div class="il-picker">
+        <button id="ilTrigger" class="il-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span id="ilTriggerText">İl seçin…</span>
+          <span class="il-caret">▾</span>
+        </button>
+        <div id="ilPanel" class="il-panel hidden">
+          <div class="il-search-wrap">
+            <svg class="il-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input id="ilSearch" class="il-search" type="text" placeholder="İl ara…" autocomplete="off" />
+          </div>
+          <ul id="ilOptions" class="il-options" role="listbox"></ul>
+        </div>
+      </div>
     </div>
     <div id="status" class="status"></div>
   </div>
@@ -1169,8 +1229,13 @@ function renderManual(il, list) {
 }
 
 (function () {
-  var ilSelect = $("ilSelect");
-  if (!ilSelect) return;
+  var trigger = $("ilTrigger");
+  if (!trigger) return;
+  var panel = $("ilPanel");
+  var search = $("ilSearch");
+  var options = $("ilOptions");
+  var triggerText = $("ilTriggerText");
+
   var PROVINCES = [
     "Adana","Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya","Ankara","Antalya",
     "Ardahan","Artvin","Aydın","Balıkesir","Bartın","Batman","Bayburt","Bilecik","Bingöl",
@@ -1183,16 +1248,65 @@ function renderManual(il, list) {
     "Sivas","Şanlıurfa","Şırnak","Tekirdağ","Tokat","Trabzon","Tunceli","Uşak","Van",
     "Yalova","Yozgat","Zonguldak"
   ].sort(function (a, b) { return a.localeCompare(b, "tr"); });
-  PROVINCES.forEach(function (name) {
-    var o = document.createElement("option");
-    o.value = name;
-    o.textContent = name;
-    ilSelect.appendChild(o);
+
+  function norm(s) { return (s || "").toLocaleLowerCase("tr"); }
+
+  function renderOptions(filter) {
+    var f = norm(filter).trim();
+    options.innerHTML = "";
+    var matched = PROVINCES.filter(function (n) { return !f || norm(n).indexOf(f) !== -1; });
+    if (!matched.length) {
+      var em = document.createElement("li");
+      em.className = "empty";
+      em.textContent = "Sonuç yok";
+      options.appendChild(em);
+      return;
+    }
+    matched.forEach(function (name) {
+      var li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = name;
+      li.addEventListener("click", function () { choose(name); });
+      options.appendChild(li);
+    });
+  }
+
+  function openPanel() {
+    panel.classList.remove("hidden");
+    trigger.setAttribute("aria-expanded", "true");
+    search.value = "";
+    renderOptions("");
+    setTimeout(function () { search.focus(); }, 30);
+  }
+  function closePanel() {
+    panel.classList.add("hidden");
+    trigger.setAttribute("aria-expanded", "false");
+  }
+  function choose(name) {
+    triggerText.textContent = name;
+    closePanel();
+    selectProvince(name);
+  }
+
+  trigger.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (panel.classList.contains("hidden")) openPanel(); else closePanel();
+  });
+  search.addEventListener("input", function () { renderOptions(search.value); });
+  search.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      var first = options.querySelector("li:not(.empty)");
+      if (first) choose(first.textContent);
+    } else if (e.key === "Escape") {
+      closePanel();
+    }
+  });
+  panel.addEventListener("click", function (e) { e.stopPropagation(); });
+  document.addEventListener("click", function () {
+    if (!panel.classList.contains("hidden")) closePanel();
   });
 
-  ilSelect.addEventListener("change", async function () {
-    var il = ilSelect.value;
-    if (!il) return;
+  async function selectProvince(il) {
     findBtn.disabled = true;
     mapBtn.disabled = true;
     resultCard.classList.add("hidden");
@@ -1220,7 +1334,7 @@ function renderManual(il, list) {
       findBtn.disabled = false;
       mapBtn.disabled = false;
     }
-  });
+  }
 })();
 
 // ---- LİSTEYE DÖN ----
