@@ -9,9 +9,15 @@ import logging
 import os
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Bir il "tamamlandı" (yeniden çekilmez) sayılır ancak son başarılı çekimi
+# bu süreden yeniyse. Daha eskiyse tekrar çekilir -> gün içi/gece tazeleme
+# (bazı illerde gece nöbetçisi değişimi yakalanır). Dakika.
+FRESH_MINUTES = int(os.environ.get("NOBETCIM_FRESH_MIN", "120") or "120")
 
 # DB yolu: env > /opt/nobetcim (üretim) > proje dizini (lokal)
 _DEFAULT_DB = Path(__file__).parent / "pharmacies.db"
@@ -124,18 +130,22 @@ def get_province(duty_date: str, plate_code: int | str) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def completed_plates(duty_date: str) -> set[int]:
-    """Verilen nöbet günü için scrape'i tamamlanmış plaka kodları.
+def completed_plates(duty_date: str, fresh_minutes: int = FRESH_MINUTES) -> set[int]:
+    """Verilen nöbet günü için 'tamamlandı' (bu turda atlanacak) plaka kodları.
 
-    count=0 olan iller 'tamamlandı' sayılmaz: e-Devlet hızlı isteklerde
-    bazen boş forma döndürüyor (geçici 0). Böylece sonraki scrape turu
-    bu illeri tekrar dener; gerçekten boş olanlar (ör. İzmir TİTCK'te yok)
-    yine 0 döner ama denemeye devam etmenin maliyeti düşük.
+    Bir il atlanır ancak: count>0 (veri var) VE son başarılı çekimi
+    fresh_minutes'ten yeni. Daha eski çekimler tekrar denenir -> gün içi/gece
+    tazeleme (gece nöbetçisi değişimini yakalamak için).
+
+    count=0 olan iller 'tamamlandı' sayılmaz: e-Devlet hızlı isteklerde bazen
+    boş forma döndürüyor (geçici 0); böylece sonraki tur tekrar dener.
     """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=fresh_minutes)).isoformat()
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT plate_code FROM scrape_log WHERE duty_date = ? AND count > 0",
-            (duty_date,),
+            "SELECT plate_code FROM scrape_log "
+            "WHERE duty_date = ? AND count > 0 AND scraped_at >= ?",
+            (duty_date, cutoff),
         )
         return {int(r["plate_code"]) for r in cur.fetchall()}
 

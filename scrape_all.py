@@ -34,9 +34,16 @@ CHAMBER_PLATES = set(chamber.CHAMBER_SOURCES) | {27, 79}
 
 
 def active_duty_dates() -> list[str]:
-    """e-Devlet formatında (dd/mm/YYYY) bugün ve yarın."""
+    """e-Devlet formatında (dd/mm/YYYY) aktif nöbet günü + ertesi gün.
+
+    Nöbet TR saatiyle 08:30'da değişir. 08:30'dan ÖNCE (gece 00:00–08:30)
+    aktif nöbet hâlâ DÜNden gelir; bu yüzden taban gün dün olur. Böylece
+    gece çekimleri (00/01/02) hâlâ aktif olan nöbet gününü tazeler.
+    """
     now = datetime.now(TURKEY_TZ)
-    return [now.strftime("%d/%m/%Y"), (now + timedelta(days=1)).strftime("%d/%m/%Y")]
+    boundary = now.replace(hour=8, minute=30, second=0, microsecond=0)
+    base = now if now >= boundary else now - timedelta(days=1)
+    return [base.strftime("%d/%m/%Y"), (base + timedelta(days=1)).strftime("%d/%m/%Y")]
 
 
 def iso_date(ddmmyyyy: str) -> str:
