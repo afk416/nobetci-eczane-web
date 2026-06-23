@@ -564,7 +564,13 @@ def scrape_chamber(
 ODA_API_SOURCES: dict[int, dict] = {
     6:  {"type": "ankara_json",  "url": "https://www.aeo.org.tr/getPharmacies/{date}",        "coords": True},   # Ankara
     28: {"type": "giresun_json", "url": "https://www.giresuneczaciodasi.org.tr/api/pharmacies", "coords": True},  # Giresun
+    34: {"type": "istanbul_json", "il": "İstanbul", "coords": True},  # İstanbul (token'lı POST)
+    77: {"type": "istanbul_json", "il": "Yalova",   "coords": True},  # Yalova (İstanbul odası API'si kapsıyor)
 }
+
+_IST_PAGE = "https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/"
+_IST_POST = "https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/index.php"
+_IST_TOKEN_RE = re.compile(r'id="h"[^>]*value="([^"]+)"')
 
 _API_HEADERS = {**HEADERS, "X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*"}
 
@@ -658,6 +664,56 @@ def _scrape_ankara_json(url_tmpl: str, plate_code: str, duty_iso: str) -> Scrape
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
 
 
+def _scrape_istanbul_json(want_il: str, plate_code: str) -> ScrapeResult:
+    """İstanbul Eczacı Odası: sayfadaki token (input#h) ile POST -> JSON.
+    API hem İstanbul hem Yalova döner; want_il ile süzülür."""
+    started = time.time()
+    try:
+        page = requests.get(_IST_PAGE, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        page.raise_for_status()
+        m = _IST_TOKEN_RE.search(page.text)
+        if not m:
+            return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+        r = requests.post(
+            _IST_POST, headers=_API_HEADERS,
+            data={"jx": "1", "islem": "get_eczane_markers", "h": m.group(1)},
+            timeout=REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as exc:
+        logger.warning("istanbul api başarısız: %s", exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    want = _norm(want_il)
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for e in data.get("eczaneler", []) if isinstance(data, dict) else []:
+        if _norm(e.get("il", "")) != want:
+            continue
+        name = (e.get("eczane_ad") or "").strip()
+        if not name:
+            continue
+        parts = [e.get("mahalle"), e.get("cadde_sokak"),
+                 ("No:" + str(e["bina_kapi"])) if e.get("bina_kapi") else None]
+        address = " ".join(p for p in parts if p)
+        try:
+            lat = float(e["lat"]); lng = float(e["lng"])
+        except (TypeError, ValueError, KeyError):
+            lat = lng = None
+        key = _norm(name) + str(lat)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": (e.get("ilce") or "").strip(),
+            "name": name, "address": address,
+            "phone": _normalize_phone(e.get("eczane_tel") or ""),
+            "lat": lat, "lng": lng,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
 def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
     """ODA_API_SOURCES tipine göre doğru özel scraper'a yönlendirir."""
     t = info.get("type")
@@ -665,6 +721,8 @@ def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
         return _scrape_giresun_json(info["url"], str(plate_code), duty_iso)
     if t == "ankara_json":
         return _scrape_ankara_json(info["url"], str(plate_code), duty_iso)
+    if t == "istanbul_json":
+        return _scrape_istanbul_json(info["il"], str(plate_code))
     return ScrapeResult(False, str(plate_code))
 
 
