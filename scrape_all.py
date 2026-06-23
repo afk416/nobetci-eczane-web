@@ -167,20 +167,20 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
     return ok, fail
 
 
-def scrape_fallbacks(duty_iso: str, plates: list[int]) -> tuple[int, int]:
-    """TİTCK'ten bugün veri ALINAMAYAN illeri (count<=0) oda yedeğinden doldurur.
+def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> tuple[int, int]:
+    """ODA-ÖNCELİK: FALLBACK_SOURCES illerini (bugün) DOĞRUDAN odadan çeker.
 
-    Yalnız chamber.FALLBACK_SOURCES'ta kayıtlı (OBEN, parser tutan) iller için
-    çalışır. Dolu veri zaten varsa o ile dokunmaz.
+    Eczacı odası siteleri nöbet değişimini anında yansıttığı için bu iller önce
+    odadan alınır; oda boş/erişilemezse TİTCK ikinci sırada (sonraki geçişte)
+    doldurur. Taze-tamamlanmış iller atlanır (freshness). Oda boş dönerse
+    mevcut dolu veriyi EZMEZ (kayıt yapılmaz).
     """
-    targets = [
-        p for p in plates
-        if p in chamber.FALLBACK_SOURCES and store.province_count(duty_iso, p) <= 0
-    ]
+    done = set() if force else store.completed_plates(duty_iso)
+    targets = [p for p in plates if p in chamber.FALLBACK_SOURCES and p not in done]
     if not targets:
         return 0, 0
 
-    logger.info("Fallback (oda yedeği): %d il deneniyor: %s",
+    logger.info("Oda-öncelik: %d il odadan çekiliyor: %s",
                 len(targets), ", ".join(f"{p} {PLATE_CITY[p]}" for p in targets))
     ok = fail = 0
     for plate in targets:
@@ -191,13 +191,13 @@ def scrape_fallbacks(duty_iso: str, plates: list[int]) -> tuple[int, int]:
                 info["url"], city, str(plate), multi=info.get("multi", False)
             )
         except Exception:
-            logger.exception("fallback %s (%d) HATA", city, plate)
+            logger.exception("oda %s (%d) HATA", city, plate)
             fail += 1
             time.sleep(CHAMBER_DELAY)
             continue
 
         if not res.success or not res.pharmacies:
-            logger.warning("fallback %s (%d) veri yok", city, plate)
+            logger.warning("oda %s (%d) veri yok -> TİTCK devralacak", city, plate)
             fail += 1
             time.sleep(CHAMBER_DELAY)
             continue
@@ -209,8 +209,8 @@ def scrape_fallbacks(duty_iso: str, plates: list[int]) -> tuple[int, int]:
 
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
         store.save_province(duty_iso, plate, city, res.pharmacies)
-        logger.info("fallback ODA %s (%d): %d eczane (%d koordinatlı) — TİTCK boştu",
-                    city, plate, len(res.pharmacies), with_coords)
+        logger.info("ODA %s (%d): %d eczane (%d koordinatlı) %.1fs",
+                    city, plate, len(res.pharmacies), with_coords, res.took)
         ok += 1
         time.sleep(CHAMBER_DELAY)
 
@@ -256,26 +256,39 @@ def main() -> int:
     started = time.time()
     total_ok = total_fail = 0
 
-    # TİTCK illeri (oda kaynaklı 20 il hariç) — bugün + yarın
+    duty_today = iso_date(dates[0])
+
+    # 1) ODA-ÖNCELİK (bugün): eczacı odası siteleri değişimi ANINDA yansıtır.
+    #    Oda kaynaklı tüm iller önce odadan çekilir (TİTCK'siz 20 il + fallback 26).
+    chamber_ok, chamber_fail = scrape_chambers(duty_today, plates, args.force)
+    total_ok += chamber_ok
+    total_fail += chamber_fail
+
+    fb_ok, fb_fail = scrape_fallbacks(duty_today, plates, args.force)
+    total_ok += fb_ok
+    total_fail += fb_fail
+
+    # 2) TİTCK İKİNCİ SIRADA: oda siteleri TODAY-only olduğu için yarını TİTCK
+    #    verir; bugün ise yalnız oda'nın DOLDURAMADIĞI illeri çeker.
     titck_plates = [p for p in plates if p not in CHAMBER_PLATES]
     if titck_plates:
         session = TitckSession()
-        for date_str in dates:
+        oda_plates = CHAMBER_PLATES | set(chamber.FALLBACK_SOURCES)
+        # BUGÜN: oda'nın bugün veri sağladığı illeri TİTCK EZMESİN (oda-öncelik,
+        # --force olsa bile). Oda kaynağı olmayan iller normal akışta çekilir.
+        oda_filled = {p for p in oda_plates if store.province_count(duty_today, p) > 0}
+        today_titck = [p for p in titck_plates if p not in oda_filled]
+        ok, fail = scrape_for_date(session, dates[0], today_titck, args.force)
+        total_ok += ok
+        total_fail += fail
+        # YARIN (ve sonrası): tüm TİTCK illeri (oda yarını vermez)
+        for date_str in dates[1:]:
             ok, fail = scrape_for_date(session, date_str, titck_plates, args.force)
             total_ok += ok
             total_fail += fail
 
-    # Eczacı odası illeri — sadece bugün (siteler TODAY-only)
-    chamber_ok, chamber_fail = scrape_chambers(iso_date(dates[0]), plates, args.force)
-    total_ok += chamber_ok
-    total_fail += chamber_fail
-
-    # Fallback: TİTCK'ten bugün veri alınamayan illeri oda yedeğinden doldur
-    fb_ok, fb_fail = scrape_fallbacks(iso_date(dates[0]), plates)
-    total_ok += fb_ok
-
-    # Hâlâ verisiz kalan illeri raporla (hangi ile fallback gerektiğini görmek için)
-    report_empty(iso_date(dates[0]), plates)
+    # Hâlâ verisiz kalan illeri raporla
+    report_empty(duty_today, plates)
 
     # Eski nöbet günlerini temizle (aktif günleri tut)
     keep = [iso_date(d) for d in dates]
