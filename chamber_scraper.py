@@ -580,7 +580,6 @@ ODA_API_SOURCES: dict[int, dict] = {
     77: {"type": "istanbul_json", "il": "Yalova",   "coords": True},  # Yalova (İstanbul odası API'si kapsıyor)
     42: {"type": "konya_html",   "coords": True},  # Konya (statik tablo, il geneli)
     27: {"type": "gantep_html",  "coords": True},  # Gaziantep (JS marker dizisi, il geneli)
-    52: {"type": "eczanesistemi", "url": "https://ordueczaciodasi.org.tr/nobetci-eczaneler/", "coords": True},  # Ordu
 }
 
 _IST_PAGE = "https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/"
@@ -850,84 +849,9 @@ def _scrape_gantep_html(plate_code: str) -> ScrapeResult:
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
 
 
-_ECZSIS_IFRAME_RE = re.compile(r'https?://[\w.-]*eczanesistemi\.net/list/\d+')
-_ECZSIS_Q_RE = re.compile(r'maps\.google\.com/\?q=(-?[\d.]+),(-?[\d.]+)')
-
-
-def _scrape_eczanesistemi(oda_url: str, plate_code: str) -> ScrapeResult:
-    """eczanesistemi.net platformu: oda nöbet sayfası ilçe başına bir
-    <iframe src=".../list/{id}"> barındırır. Her iframe ayrı çekilip parse
-    edilir. Koordinatlar maps.google.com/?q=LAT,LNG bağlantısında gerçek
-    değerlerdir (geocode gerekmez). İl geneli, sadece bugün."""
-    started = time.time()
-    headers = {**HEADERS, "Referer": oda_url, "Accept-Language": "tr-TR,tr;q=0.9"}
-
-    def _get(url: str) -> str | None:
-        for attempt in range(MAX_RETRIES):
-            try:
-                rr = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-                rr.raise_for_status()
-                rr.encoding = rr.apparent_encoding or "utf-8"
-                return rr.text
-            except Exception as exc:
-                if attempt == MAX_RETRIES - 1:
-                    logger.warning("eczanesistemi istek başarısız %s: %s", url, exc)
-                time.sleep(1.0 + attempt)
-        return None
-
-    main = _get(oda_url)
-    if main is None:
-        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
-
-    iframes = list(dict.fromkeys(_ECZSIS_IFRAME_RE.findall(main)))
-    if not iframes:
-        logger.warning("eczanesistemi iframe bulunamadı: %s", oda_url)
-        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
-
-    pharmacies: list[dict] = []
-    seen: set[str] = set()
-    for src in iframes:
-        page = _get(src)
-        if page is None:
-            continue
-        for blk in re.split(r'(?=<a href="https://maps\.google\.com/\?q=)', page):
-            mc = _ECZSIS_Q_RE.search(blk)
-            if not mc:
-                continue
-            try:
-                la, ln = float(mc.group(1)), float(mc.group(2))
-            except ValueError:
-                continue
-            ma = re.search(r"maps\.google[^>]*>(.*?)</a>", blk, re.S)
-            raw = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", ma.group(1))).strip() if ma else ""
-            name = raw.split(":", 1)[1].strip() if ":" in raw else raw
-            if "ECZ" not in _norm(name):
-                continue
-            ps = re.findall(r"<p>(.*?)</p>", blk, re.S)
-            addr_line = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", ps[0])).strip() if ps else ""
-            district = ""
-            if "/" in addr_line:
-                seg = addr_line.rsplit("/", 1)[0].split()
-                district = seg[-1] if seg else ""
-            mt = re.search(r'tel:([^"]+)', blk)
-            phone = _normalize_phone(mt.group(1)) if mt else None
-            key = _norm(name) + str(la)[:8]
-            if key in seen:
-                continue
-            seen.add(key)
-            pharmacies.append({
-                "district": _tr_title(district), "name": name, "address": addr_line,
-                "phone": phone, "lat": la, "lng": ln,
-            })
-        time.sleep(0.3)
-    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
-
-
 def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
     """ODA_API_SOURCES tipine göre doğru özel scraper'a yönlendirir."""
     t = info.get("type")
-    if t == "eczanesistemi":
-        return _scrape_eczanesistemi(info["url"], str(plate_code))
     if t == "giresun_json":
         return _scrape_giresun_json(info["url"], str(plate_code), duty_iso)
     if t == "ankara_json":
