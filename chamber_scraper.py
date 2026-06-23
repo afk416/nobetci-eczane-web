@@ -18,6 +18,7 @@ Kullanım:
 """
 from __future__ import annotations
 
+import html as _htmllib
 import logging
 import re
 import time
@@ -138,6 +139,17 @@ def _norm(s: str) -> str:
     s = s.translate(table)
     s = (s.replace("ı", "i").replace("İ", "I"))
     return re.sub(r"[^A-Za-z0-9]", "", s).upper()
+
+
+def _tr_title(s: str) -> str:
+    """Türkçe-güvenli başlık (str.title() İ/I'yı bozar: 'Seydi̇şehir')."""
+    out = []
+    for w in s.split():
+        if not w:
+            continue
+        rest = w[1:].replace("İ", "i").replace("I", "ı").lower()
+        out.append(w[0].upper() + rest)
+    return " ".join(out)
 
 
 def _normalize_phone(raw: str) -> str | None:
@@ -566,6 +578,9 @@ ODA_API_SOURCES: dict[int, dict] = {
     28: {"type": "giresun_json", "url": "https://www.giresuneczaciodasi.org.tr/api/pharmacies", "coords": True},  # Giresun
     34: {"type": "istanbul_json", "il": "İstanbul", "coords": True},  # İstanbul (token'lı POST)
     77: {"type": "istanbul_json", "il": "Yalova",   "coords": True},  # Yalova (İstanbul odası API'si kapsıyor)
+    42: {"type": "konya_html",   "coords": True},  # Konya (statik tablo, il geneli)
+    27: {"type": "gantep_html",  "coords": True},  # Gaziantep (JS marker dizisi, il geneli)
+    52: {"type": "eczanesistemi", "url": "https://ordueczaciodasi.org.tr/nobetci-eczaneler/", "coords": True},  # Ordu
 }
 
 _IST_PAGE = "https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/"
@@ -714,15 +729,215 @@ def _scrape_istanbul_json(want_il: str, plate_code: str) -> ScrapeResult:
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
 
 
+_KONYA_URL = "https://www.konyanobetcieczaneleri.com/"
+_KONYA_MAPS_RE = re.compile(r"maps/@(-?[\d.]+),(-?[\d.]+)")
+_KONYA_TEL_RE = re.compile(r"tel:/*\+?(\d+)")
+
+
+def _scrape_konya_html(plate_code: str) -> ScrapeResult:
+    """Konya: statik tablo (UTF-8). '<td ...baslik_grup>' (bölge) hücreleriyle
+    bloklara bölünür; her blokta ad, maps/@LAT,LNG koordinat, tel ve adres
+    bulunur. İl geneli (merkez bölge-gruplu + uzak ilçeler), sadece bugün."""
+    started = time.time()
+    try:
+        r = requests.get(_KONYA_URL, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        r.encoding = r.apparent_encoding or "utf-8"
+        html = r.text
+    except Exception as exc:
+        logger.warning("konya html başarısız: %s", exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    starts = [m.start() for m in re.finditer(r'<td[^>]*class="baslik_grup"', html)]
+    starts.append(len(html))
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for i in range(len(starts) - 1):
+        blk = html[starts[i]:starts[i + 1]]
+        blk = re.sub(r"<script.*?</script>", " ", blk, flags=re.S | re.I)
+        mg = re.search(r'baslik_grup"[^>]*>\s*<font[^>]*>\s*(.*?)\s*</font>', blk, re.S)
+        bolge = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", mg.group(1))).strip() if mg else ""
+        mn = re.search(r'baslik_eczane"[^>]*>\s*<font[^>]*>\s*(.*?)\s*</font>', blk, re.S)
+        name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", mn.group(1))).strip() if mn else ""
+        if not name:
+            continue
+        mc = _KONYA_MAPS_RE.search(blk)
+        if not mc:
+            continue
+        lat, lng = float(mc.group(1)), float(mc.group(2))
+        mt = _KONYA_TEL_RE.search(blk)
+        phone = _normalize_phone(mt.group(1)) if mt else None
+        # adres: <a>..</a> (harita + telefon görünür no) ve diğer etiketleri temizle,
+        # baş kısımdaki bölge ve ad metnini at.
+        txt = re.sub(r"<a [^>]*>.*?</a>", " ", blk, flags=re.S)
+        txt = re.sub(r"<[^>]+>", " ", txt)
+        txt = re.sub(r"\s+", " ", txt).strip()
+        if bolge and txt.startswith(bolge):
+            txt = txt[len(bolge):].strip()
+        if name and txt.startswith(name):
+            txt = txt[len(name):].strip()
+        address = txt
+        mp = re.search(r"\(([^)]+)\)", bolge)
+        district = _tr_title(mp.group(1).split("-")[0].split("/")[0].strip()
+                             if mp else bolge)
+        if "ECZ" not in _norm(name):
+            name = name + " ECZANESİ"
+        key = _norm(name) + str(lat)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": district, "name": name, "address": address,
+            "phone": phone, "lat": lat, "lng": lng,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
+_GANTEP_URL = "https://www.gaziantepeo.org.tr/nobetci-eczaneler"
+# Sayfa içi JS marker dizisi: ['<h4>AD</h4>...Telefon..Adres..', LAT, LNG, ID]
+_GANTEP_ENTRY_RE = re.compile(r"\['((?:[^'\\]|\\.)*)'\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*\d+\s*\]")
+# Görünür biçimde (str.title() Türkçe İ'yi bozar); _norm ile eşleştirilir.
+_GANTEP_DISTRICTS = ["Şahinbey", "Şehitkamil", "Nizip", "İslahiye", "Nurdağı",
+                     "Oğuzeli", "Araban", "Yavuzeli", "Karkamış"]
+
+
+def _scrape_gantep_html(plate_code: str) -> ScrapeResult:
+    """Gaziantep: sayfa içi JS marker dizisinden okur. Her giriş
+    ['<h4>AD</h4>..Telefon..Adres..', LAT, LNG, ID] biçiminde. İl geneli
+    (merkez + Nizip/İslahiye/Araban vb. ilçeler), sadece bugün."""
+    started = time.time()
+    try:
+        r = requests.get(_GANTEP_URL, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        r.encoding = r.apparent_encoding or "utf-8"
+        page = r.text
+    except Exception as exc:
+        logger.warning("gaziantep html başarısız: %s", exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for blob, lat, lng in _GANTEP_ENTRY_RE.findall(page):
+        blob = _htmllib.unescape(blob.replace("\\/", "/").replace("\\'", "'"))
+        mn = re.search(r"<h4>(.*?)</h4>", blob, re.S)
+        name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", mn.group(1))).strip() if mn else ""
+        if not name:
+            continue
+        mt = re.search(r"Telefon</b>\s*:\s*([^<]+)", blob)
+        phone = _normalize_phone(mt.group(1).strip()) if mt else None
+        ma = re.search(r"Adres</b>\s*:\s*([^<]+)", blob)
+        address = re.sub(r"\s+", " ", ma.group(1)).strip() if ma else ""
+        try:
+            la, ln = float(lat), float(lng)
+        except ValueError:
+            continue
+        hay = _norm(name + " " + address)
+        district = ""
+        for d in _GANTEP_DISTRICTS:
+            if _norm(d) in hay:
+                district = d
+                break
+        if "ECZ" not in _norm(name):
+            name = name + " ECZANESİ"
+        key = _norm(name) + str(la)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": district, "name": name, "address": address,
+            "phone": phone, "lat": la, "lng": ln,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
+_ECZSIS_IFRAME_RE = re.compile(r'https?://[\w.-]*eczanesistemi\.net/list/\d+')
+_ECZSIS_Q_RE = re.compile(r'maps\.google\.com/\?q=(-?[\d.]+),(-?[\d.]+)')
+
+
+def _scrape_eczanesistemi(oda_url: str, plate_code: str) -> ScrapeResult:
+    """eczanesistemi.net platformu: oda nöbet sayfası ilçe başına bir
+    <iframe src=".../list/{id}"> barındırır. Her iframe ayrı çekilip parse
+    edilir. Koordinatlar maps.google.com/?q=LAT,LNG bağlantısında gerçek
+    değerlerdir (geocode gerekmez). İl geneli, sadece bugün."""
+    started = time.time()
+    headers = {**HEADERS, "Referer": oda_url, "Accept-Language": "tr-TR,tr;q=0.9"}
+
+    def _get(url: str) -> str | None:
+        for attempt in range(MAX_RETRIES):
+            try:
+                rr = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                rr.raise_for_status()
+                rr.encoding = rr.apparent_encoding or "utf-8"
+                return rr.text
+            except Exception as exc:
+                if attempt == MAX_RETRIES - 1:
+                    logger.warning("eczanesistemi istek başarısız %s: %s", url, exc)
+                time.sleep(1.0 + attempt)
+        return None
+
+    main = _get(oda_url)
+    if main is None:
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    iframes = list(dict.fromkeys(_ECZSIS_IFRAME_RE.findall(main)))
+    if not iframes:
+        logger.warning("eczanesistemi iframe bulunamadı: %s", oda_url)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for src in iframes:
+        page = _get(src)
+        if page is None:
+            continue
+        for blk in re.split(r'(?=<a href="https://maps\.google\.com/\?q=)', page):
+            mc = _ECZSIS_Q_RE.search(blk)
+            if not mc:
+                continue
+            try:
+                la, ln = float(mc.group(1)), float(mc.group(2))
+            except ValueError:
+                continue
+            ma = re.search(r"maps\.google[^>]*>(.*?)</a>", blk, re.S)
+            raw = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", ma.group(1))).strip() if ma else ""
+            name = raw.split(":", 1)[1].strip() if ":" in raw else raw
+            if "ECZ" not in _norm(name):
+                continue
+            ps = re.findall(r"<p>(.*?)</p>", blk, re.S)
+            addr_line = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", ps[0])).strip() if ps else ""
+            district = ""
+            if "/" in addr_line:
+                seg = addr_line.rsplit("/", 1)[0].split()
+                district = seg[-1] if seg else ""
+            mt = re.search(r'tel:([^"]+)', blk)
+            phone = _normalize_phone(mt.group(1)) if mt else None
+            key = _norm(name) + str(la)[:8]
+            if key in seen:
+                continue
+            seen.add(key)
+            pharmacies.append({
+                "district": _tr_title(district), "name": name, "address": addr_line,
+                "phone": phone, "lat": la, "lng": ln,
+            })
+        time.sleep(0.3)
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
 def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
     """ODA_API_SOURCES tipine göre doğru özel scraper'a yönlendirir."""
     t = info.get("type")
+    if t == "eczanesistemi":
+        return _scrape_eczanesistemi(info["url"], str(plate_code))
     if t == "giresun_json":
         return _scrape_giresun_json(info["url"], str(plate_code), duty_iso)
     if t == "ankara_json":
         return _scrape_ankara_json(info["url"], str(plate_code), duty_iso)
     if t == "istanbul_json":
         return _scrape_istanbul_json(info["il"], str(plate_code))
+    if t == "konya_html":
+        return _scrape_konya_html(str(plate_code))
+    if t == "gantep_html":
+        return _scrape_gantep_html(str(plate_code))
     return ScrapeResult(False, str(plate_code))
 
 
