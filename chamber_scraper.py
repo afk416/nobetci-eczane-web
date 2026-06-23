@@ -146,8 +146,9 @@ def _tr_title(s: str) -> str:
     for w in s.split():
         if not w:
             continue
+        first = w[0].replace("ı", "I").replace("i", "İ").upper()
         rest = w[1:].replace("İ", "i").replace("I", "ı").lower()
-        out.append(w[0].upper() + rest)
+        out.append(first + rest)
     return " ".join(out)
 
 
@@ -739,7 +740,7 @@ def _scrape_konya_html(plate_code: str) -> ScrapeResult:
     try:
         r = requests.get(_KONYA_URL, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         r.raise_for_status()
-        r.encoding = r.apparent_encoding or "utf-8"
+        r.encoding = "utf-8"  # site UTF-8 (apparent_encoding Türkçe'de yanılabilir)
         html = r.text
     except Exception as exc:
         logger.warning("konya html başarısız: %s", exc)
@@ -761,7 +762,12 @@ def _scrape_konya_html(plate_code: str) -> ScrapeResult:
         mc = _KONYA_MAPS_RE.search(blk)
         if not mc:
             continue
-        lat, lng = float(mc.group(1)), float(mc.group(2))
+        try:
+            lat, lng = float(mc.group(1)), float(mc.group(2))
+        except ValueError:
+            continue  # regex'e uyan ama bozuk koordinat (örn. "37..8") — bu bloğu atla
+        if not (36.0 < lat < 40.0 and 30.0 < lng < 35.0):
+            continue  # Konya il sınırları dışı / 0,0 = geçersiz, sessiz yanlış pin önle
         mt = _KONYA_TEL_RE.search(blk)
         phone = _normalize_phone(mt.group(1)) if mt else None
         # adres: <a>..</a> (harita + telefon görünür no) ve diğer etiketleri temizle,
@@ -787,6 +793,8 @@ def _scrape_konya_html(plate_code: str) -> ScrapeResult:
             "district": district, "name": name, "address": address,
             "phone": phone, "lat": lat, "lng": lng,
         })
+    if not pharmacies:
+        logger.warning("konya: 0 eczane parse edildi — site formatı değişmiş olabilir")
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
 
 

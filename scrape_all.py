@@ -83,6 +83,18 @@ def scrape_for_date(
             time.sleep(PROVINCE_DELAY)
             continue
 
+        # TİTCK istenen tarihi listede bulamazsa SESSİZCE başka günü (genelde
+        # bugünü) döndürür; bunu yanlış güne yazmayalım — yoksa 08:30 sonrası
+        # kullanıcıya yanlış günün listesi gösterilir (max doğruluk).
+        if res.duty_date and iso_date(res.duty_date) != duty_iso:
+            logger.warning(
+                "[%d/%d] %s (%d) TİTCK %s yerine %s döndü; YAZILMADI (yanlış gün)",
+                i, len(pending), city, plate, duty_iso, res.duty_date,
+            )
+            fail += 1
+            time.sleep(PROVINCE_DELAY)
+            continue
+
         for ph in res.pharmacies:
             ph["district_key"] = district_key(ph.get("district", ""))
 
@@ -327,7 +339,11 @@ def main() -> int:
         oda_plates = CHAMBER_PLATES | set(chamber.FALLBACK_SOURCES) | set(chamber.ODA_API_SOURCES)
         # BUGÜN: oda'nın bugün veri sağladığı illeri TİTCK EZMESİN (oda-öncelik,
         # --force olsa bile). Oda kaynağı olmayan iller normal akışta çekilir.
-        oda_filled = {p for p in oda_plates if store.province_count(duty_today, p) > 0}
+        # Oda verisi YALNIZCA taze ise (count>0 ve son FRESH_MINUTES içinde) "dolu"
+        # sayılır. Oda sitesi bayatlamış/erişilemez olduğunda eski kayıt korunsa
+        # bile TİTCK devralabilsin diye tazelik kontrolü şart (max doğruluk).
+        oda_fresh = set(store.completed_plates(duty_today))
+        oda_filled = {p for p in oda_plates if p in oda_fresh}
         today_titck = [p for p in titck_plates if p not in oda_filled]
         ok, fail = scrape_for_date(session, dates[0], today_titck, args.force)
         total_ok += ok

@@ -56,7 +56,10 @@ def _current_duty_dates() -> list[str]:
         # 00:00–08:30: aktif nöbet dünden; ardından bugün/yarın yedek
         order = [yesterday, today, tomorrow]
     else:
-        order = [today, tomorrow, yesterday]
+        # 08:30 sonrası "dün" SÜRESİ DOLMUŞ nöbet günü — sessizce göstermek
+        # kapalı eczaneye yönlendirir; yedeğe koymuyoruz (max doğruluk). Bugün
+        # yoksa boş dönülür ("veri yok"), yanlış günün listesi gösterilmez.
+        order = [today, tomorrow]
     return [d.strftime("%Y-%m-%d") for d in order]
 
 
