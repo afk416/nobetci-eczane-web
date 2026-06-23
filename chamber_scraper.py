@@ -101,6 +101,30 @@ FALLBACK_SOURCES: dict[int, dict] = {
     67: {"url": "https://www.zonguldakeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Zonguldak
     68: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True},  # Aksaray
     80: {"url": "https://www.osmaniyeeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Osmaniye
+    # 2026-06 keşfi (discover-oda-sites workflow): OBEN parser'ın tuttuğu, il-bazlı
+    # filtreli URL'lerle doğrulanmış 21 il daha. Çoğu komşu illeri tek odadan
+    # plaka/slug yoluyla servis ediyor (erzurumeo, trabzon, kastamonueo, seo...).
+    11: {"url": "https://www.eskisehireo.org.tr/bilecik-nobetci-eczaneler",      "coords": True},  # Bilecik
+    12: {"url": "https://www.elazigeczaciodasi.org.tr/nobetci-eczaneler/bingol", "coords": True},  # Bingöl
+    14: {"url": "https://www.seo.org.tr/nobetci-eczaneler/14",                   "coords": True},  # Bolu
+    16: {"url": "https://www.beo.org.tr/nobetci-eczaneler",                      "coords": True},  # Bursa
+    18: {"url": "https://www.kastamonueo.org.tr/nobetci-eczaneler/18",           "coords": True},  # Çankırı
+    29: {"url": "https://www.trabzoneczaciodasi.org.tr/nobetci-eczaneler/29",    "coords": True},  # Gümüşhane
+    33: {"url": "https://www.mersineczaciodasi.org.tr/nobetci-eczaneler",        "coords": True},  # Mersin
+    36: {"url": "https://www.erzurumeo.org.tr/nobetci-eczaneler/36",             "coords": True},  # Kars
+    38: {"url": "https://www.kayserieo.org.tr/nobetci-eczaneler",                "coords": True},  # Kayseri
+    41: {"url": "https://www.kocaelieo.org.tr/nobetci-eczaneler",                "coords": True},  # Kocaeli
+    51: {"url": "https://www.neo.org.tr/nobetci-eczaneler",                      "coords": True},  # Niğde
+    53: {"url": "https://www.trabzoneczaciodasi.org.tr/nobetci-eczaneler/53",    "coords": True},  # Rize
+    54: {"url": "https://www.seo.org.tr/nobetci-eczaneler",                      "coords": True},  # Sakarya
+    59: {"url": "https://www.teo.org.tr/nobetci-eczaneler",                      "coords": True},  # Tekirdağ
+    62: {"url": "https://www.elazigeczaciodasi.org.tr/nobetci-eczaneler/tunceli","coords": True},  # Tunceli
+    63: {"url": "https://www.sanliurfaeo.org.tr/nobetci-eczaneler",             "coords": False},  # Şanlıurfa (geocode)
+    69: {"url": "https://www.erzurumeo.org.tr/nobetci-eczaneler/69",             "coords": True},  # Bayburt
+    75: {"url": "https://www.erzurumeo.org.tr/nobetci-eczaneler/75",             "coords": True},  # Ardahan
+    76: {"url": "https://www.erzurumeo.org.tr/nobetci-eczaneler/76",             "coords": True},  # Iğdır
+    78: {"url": "https://www.kastamonueo.org.tr/nobetci-eczaneler/78",           "coords": True},  # Karabük
+    81: {"url": "https://www.duzceeo.org/nobetci-eczaneler",                     "coords": True},  # Düzce
 }
 
 
