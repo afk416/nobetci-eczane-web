@@ -18,7 +18,6 @@ Kullanım:
 """
 from __future__ import annotations
 
-import html as _htmllib
 import logging
 import re
 import time
@@ -579,7 +578,6 @@ ODA_API_SOURCES: dict[int, dict] = {
     34: {"type": "istanbul_json", "il": "İstanbul", "coords": True},  # İstanbul (token'lı POST)
     77: {"type": "istanbul_json", "il": "Yalova",   "coords": True},  # Yalova (İstanbul odası API'si kapsıyor)
     42: {"type": "konya_html",   "coords": True},  # Konya (statik tablo, il geneli)
-    27: {"type": "gantep_html",  "coords": True},  # Gaziantep (JS marker dizisi, il geneli)
 }
 
 _IST_PAGE = "https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/"
@@ -792,63 +790,6 @@ def _scrape_konya_html(plate_code: str) -> ScrapeResult:
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
 
 
-_GANTEP_URL = "https://www.gaziantepeo.org.tr/nobetci-eczaneler"
-# Sayfa içi JS marker dizisi: ['<h4>AD</h4>...Telefon..Adres..', LAT, LNG, ID]
-_GANTEP_ENTRY_RE = re.compile(r"\['((?:[^'\\]|\\.)*)'\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*\d+\s*\]")
-# Görünür biçimde (str.title() Türkçe İ'yi bozar); _norm ile eşleştirilir.
-_GANTEP_DISTRICTS = ["Şahinbey", "Şehitkamil", "Nizip", "İslahiye", "Nurdağı",
-                     "Oğuzeli", "Araban", "Yavuzeli", "Karkamış"]
-
-
-def _scrape_gantep_html(plate_code: str) -> ScrapeResult:
-    """Gaziantep: sayfa içi JS marker dizisinden okur. Her giriş
-    ['<h4>AD</h4>..Telefon..Adres..', LAT, LNG, ID] biçiminde. İl geneli
-    (merkez + Nizip/İslahiye/Araban vb. ilçeler), sadece bugün."""
-    started = time.time()
-    try:
-        r = requests.get(_GANTEP_URL, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        r.raise_for_status()
-        r.encoding = r.apparent_encoding or "utf-8"
-        page = r.text
-    except Exception as exc:
-        logger.warning("gaziantep html başarısız: %s", exc)
-        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
-
-    pharmacies: list[dict] = []
-    seen: set[str] = set()
-    for blob, lat, lng in _GANTEP_ENTRY_RE.findall(page):
-        blob = _htmllib.unescape(blob.replace("\\/", "/").replace("\\'", "'"))
-        mn = re.search(r"<h4>(.*?)</h4>", blob, re.S)
-        name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", mn.group(1))).strip() if mn else ""
-        if not name:
-            continue
-        mt = re.search(r"Telefon</b>\s*:\s*([^<]+)", blob)
-        phone = _normalize_phone(mt.group(1).strip()) if mt else None
-        ma = re.search(r"Adres</b>\s*:\s*([^<]+)", blob)
-        address = re.sub(r"\s+", " ", ma.group(1)).strip() if ma else ""
-        try:
-            la, ln = float(lat), float(lng)
-        except ValueError:
-            continue
-        hay = _norm(name + " " + address)
-        district = ""
-        for d in _GANTEP_DISTRICTS:
-            if _norm(d) in hay:
-                district = d
-                break
-        if "ECZ" not in _norm(name):
-            name = name + " ECZANESİ"
-        key = _norm(name) + str(la)[:8]
-        if key in seen:
-            continue
-        seen.add(key)
-        pharmacies.append({
-            "district": district, "name": name, "address": address,
-            "phone": phone, "lat": la, "lng": ln,
-        })
-    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
-
-
 def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
     """ODA_API_SOURCES tipine göre doğru özel scraper'a yönlendirir."""
     t = info.get("type")
@@ -860,8 +801,6 @@ def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
         return _scrape_istanbul_json(info["il"], str(plate_code))
     if t == "konya_html":
         return _scrape_konya_html(str(plate_code))
-    if t == "gantep_html":
-        return _scrape_gantep_html(str(plate_code))
     return ScrapeResult(False, str(plate_code))
 
 
