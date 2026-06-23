@@ -217,6 +217,53 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
     return ok, fail
 
 
+def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) -> tuple[int, int]:
+    """ODA-ÖNCELİK: JSON/API tabanlı özel oda kaynakları (Ankara, Giresun...).
+
+    OBEN olmayan, kendi veri ucu olan odalar. chamber.scrape_oda_api tipe göre
+    doğru parser'a yönlendirir. Boş dönerse mevcut veriyi ezmez; taze-tamamlanmış
+    iller atlanır.
+    """
+    done = set() if force else store.completed_plates(duty_iso)
+    targets = [p for p in plates if p in chamber.ODA_API_SOURCES and p not in done]
+    if not targets:
+        return 0, 0
+
+    logger.info("Oda-öncelik (API): %d il çekiliyor: %s",
+                len(targets), ", ".join(f"{p} {PLATE_CITY[p]}" for p in targets))
+    ok = fail = 0
+    for plate in targets:
+        city = PLATE_CITY[plate]
+        info = chamber.ODA_API_SOURCES[plate]
+        try:
+            res = chamber.scrape_oda_api(plate, info, duty_iso)
+        except Exception:
+            logger.exception("oda-api %s (%d) HATA", city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        if not res.success or not res.pharmacies:
+            logger.warning("oda-api %s (%d) veri yok -> TİTCK devralacak", city, plate)
+            fail += 1
+            time.sleep(CHAMBER_DELAY)
+            continue
+
+        if any(p.get("lat") is None for p in res.pharmacies):
+            chamber.geocode_pharmacies(res.pharmacies, city)
+        for ph in res.pharmacies:
+            ph["district_key"] = district_key(ph.get("district", ""))
+
+        with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
+        store.save_province(duty_iso, plate, city, res.pharmacies)
+        logger.info("ODA-API %s (%d): %d eczane (%d koordinatlı) %.1fs",
+                    city, plate, len(res.pharmacies), with_coords, res.took)
+        ok += 1
+        time.sleep(CHAMBER_DELAY)
+
+    return ok, fail
+
+
 def report_empty(duty_iso: str, plates: list[int]) -> None:
     """Tüm kaynaklar denendikten sonra hâlâ verisiz kalan illeri raporlar."""
     empty = [p for p in plates if store.province_count(duty_iso, p) <= 0]
@@ -268,12 +315,16 @@ def main() -> int:
     total_ok += fb_ok
     total_fail += fb_fail
 
+    api_ok, api_fail = scrape_api_sources(duty_today, plates, args.force)
+    total_ok += api_ok
+    total_fail += api_fail
+
     # 2) TİTCK İKİNCİ SIRADA: oda siteleri TODAY-only olduğu için yarını TİTCK
     #    verir; bugün ise yalnız oda'nın DOLDURAMADIĞI illeri çeker.
     titck_plates = [p for p in plates if p not in CHAMBER_PLATES]
     if titck_plates:
         session = TitckSession()
-        oda_plates = CHAMBER_PLATES | set(chamber.FALLBACK_SOURCES)
+        oda_plates = CHAMBER_PLATES | set(chamber.FALLBACK_SOURCES) | set(chamber.ODA_API_SOURCES)
         # BUGÜN: oda'nın bugün veri sağladığı illeri TİTCK EZMESİN (oda-öncelik,
         # --force olsa bile). Oda kaynağı olmayan iller normal akışta çekilir.
         oda_filled = {p for p in oda_plates if store.province_count(duty_today, p) > 0}

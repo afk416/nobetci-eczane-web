@@ -22,6 +22,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
@@ -104,6 +105,7 @@ FALLBACK_SOURCES: dict[int, dict] = {
     # 2026-06 keşfi (discover-oda-sites workflow): OBEN parser'ın tuttuğu, il-bazlı
     # filtreli URL'lerle doğrulanmış 21 il daha. Çoğu komşu illeri tek odadan
     # plaka/slug yoluyla servis ediyor (erzurumeo, trabzon, kastamonueo, seo...).
+    7:  {"url": "https://www.antalyaeo.org.tr/tr/nobetci-eczaneler",            "coords": True},  # Antalya (OBEN, ad tel: linkinde)
     11: {"url": "https://www.eskisehireo.org.tr/bilecik-nobetci-eczaneler",      "coords": True},  # Bilecik
     12: {"url": "https://www.elazigeczaciodasi.org.tr/nobetci-eczaneler/bingol", "coords": True},  # Bingöl
     14: {"url": "https://www.seo.org.tr/nobetci-eczaneler/14",                   "coords": True},  # Bolu
@@ -302,6 +304,10 @@ def _container_for(anchor):
         for t in parent.find_all(["h3", "h4", "strong", "font"]):
             if "ECZ" in _norm(t.get_text(" ", strip=True)):
                 return parent
+        # ad bazı şablonlarda başlık değil <a href="tel:"> içinde (ör. Antalya)
+        for tl in parent.find_all("a", href=lambda h: h and h.startswith("tel:")):
+            if "ECZ" in _norm(tl.get_text(" ", strip=True)):
+                return parent
         node = parent
     return anchor.parent
 
@@ -327,6 +333,14 @@ def _extract_name_district(container) -> tuple[str | None, str | None]:
             else:
                 name = txt
             break
+    # 1b) ad başlıkta bulunamadıysa: <a href="tel:"> metni ECZ içeriyorsa
+    #     onu kullan (ör. Antalya OBEN: ad tel linkinin içinde)
+    if not name:
+        for tl in container.find_all("a", href=lambda h: h and h.startswith("tel:")):
+            txt = tl.get_text(" ", strip=True)
+            if "ECZ" in _norm(txt) and len(txt) > 3:
+                name = txt.split(" - ", 1)[0].strip() if " - " in txt else txt
+                break
     # 2) ilçe: <small>, hand-right ikonu, ya da "İL - İLÇE" strong
     if not district:
         district = _icon_text(container, "hand-right")
@@ -540,6 +554,118 @@ def scrape_chamber(
         pharmacies=pharmacies,
         took=round(time.time() - started, 1),
     )
+
+
+# ---------------------------------------------------------------------------
+# JSON/API tabanlı oda kaynakları (OBEN değil; özel uçlar)
+# ---------------------------------------------------------------------------
+
+# Tarih param/süzme gerektiren özel oda API'leri. type -> ilgili fonksiyon.
+ODA_API_SOURCES: dict[int, dict] = {
+    6:  {"type": "ankara_json",  "url": "https://www.aeo.org.tr/getPharmacies/{date}",        "coords": True},   # Ankara
+    28: {"type": "giresun_json", "url": "https://www.giresuneczaciodasi.org.tr/api/pharmacies", "coords": True},  # Giresun
+}
+
+_API_HEADERS = {**HEADERS, "X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*"}
+
+
+def _scrape_giresun_json(url: str, plate_code: str, duty_iso: str) -> ScrapeResult:
+    """Giresun: temiz JSON API. Tüm haftayı döner; bugünün tarihine göre süzülür."""
+    started = time.time()
+    try:
+        r = requests.get(url, headers=_API_HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as exc:
+        logger.warning("giresun api başarısız %s: %s", url, exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    want = datetime.strptime(duty_iso, "%Y-%m-%d").strftime("%d.%m.%Y")
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for x in data if isinstance(data, list) else []:
+        if not x.get("is_duty"):
+            continue
+        if x.get("date") and x.get("date") != want:
+            continue
+        name = (x.get("name") or "").strip()
+        if "ECZ" not in _norm(name):
+            continue
+        try:
+            lat = float(x["lat"]); lng = float(x["lng"])
+        except (TypeError, ValueError, KeyError):
+            lat = lng = None
+        key = _norm(name) + str(lat)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": (x.get("district") or "").strip().title(),
+            "name": name,
+            "address": (x.get("address") or "").strip(),
+            "phone": _normalize_phone(x.get("phone") or ""),
+            "lat": lat, "lng": lng,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
+_GMAPS_QUERY_RE = re.compile(r"[?&]query=(-?[\d.]+),(-?[\d.]+)")
+
+
+def _scrape_ankara_json(url_tmpl: str, plate_code: str, duty_iso: str) -> ScrapeResult:
+    """Ankara: JSON içinde HTML döner. div.inline-box -> data-name/data-district,
+    tel: link telefon, google maps/search?query=LAT,LNG koordinat."""
+    started = time.time()
+    url = url_tmpl.replace("{date}", duty_iso)
+    try:
+        r = requests.get(url, headers=_API_HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        html = (r.json() or {}).get("html", "")
+    except Exception as exc:
+        logger.warning("ankara api başarısız %s: %s", url, exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(html, "html.parser")
+
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for box in soup.select("div.inline-box"):
+        name = (box.get("data-name") or "").strip()
+        if not name:
+            continue
+        district = (box.get("data-district") or "").strip()
+        lat = lng = None
+        a = box.find("a", href=_GMAPS_QUERY_RE)
+        if a:
+            mm = _GMAPS_QUERY_RE.search(a.get("href", ""))
+            if mm:
+                lat, lng = float(mm.group(1)), float(mm.group(2))
+        tel = box.find("a", href=lambda h: h and h.startswith("tel:"))
+        phone = _normalize_phone(tel.get("href", "")) if tel else None
+        addr_el = box.find(class_=re.compile(r"adres|address|text", re.I))
+        address = addr_el.get_text(" ", strip=True) if addr_el else ""
+        key = _norm(name) + str(lat)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": district, "name": name, "address": address,
+            "phone": phone, "lat": lat, "lng": lng,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
+def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
+    """ODA_API_SOURCES tipine göre doğru özel scraper'a yönlendirir."""
+    t = info.get("type")
+    if t == "giresun_json":
+        return _scrape_giresun_json(info["url"], str(plate_code), duty_iso)
+    if t == "ankara_json":
+        return _scrape_ankara_json(info["url"], str(plate_code), duty_iso)
+    return ScrapeResult(False, str(plate_code))
 
 
 if __name__ == "__main__":
