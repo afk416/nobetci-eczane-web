@@ -32,6 +32,12 @@ CHAMBER_DELAY = 2.0    # oda siteleri arası nazik gecikme
 # 27 (Gaziantep) ve 79 (Kilis) Eflatunweb (gaziantepeo.org.tr), kalanı OBEN.
 CHAMBER_PLATES = set(chamber.CHAMBER_SOURCES) | {27, 79}
 
+# Bu chamber illerine TİTCK de (koordinatlı) veri veriyor (canlı test 25 Haz 2026).
+# Oda YİNE önce gelir (oda_filled korur); TİTCK bunlara (a) YARIN verisini, (b)
+# oda erişilemezse BUGÜN yedeğini sağlar. Kalan 10 chamber iline TİTCK 0 döndüğü
+# için onlar yalnız oda kalır (yarın verisi yok). Yeniden test edilebilir.
+CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 43, 65, 73, 74}
+
 
 def active_duty_dates() -> list[str]:
     """e-Devlet formatında (dd/mm/YYYY) aktif nöbet günü + ertesi gün.
@@ -332,8 +338,11 @@ def main() -> int:
     total_fail += api_fail
 
     # 2) TİTCK İKİNCİ SIRADA: oda siteleri TODAY-only olduğu için yarını TİTCK
-    #    verir; bugün ise yalnız oda'nın DOLDURAMADIĞI illeri çeker.
-    titck_plates = [p for p in plates if p not in CHAMBER_PLATES]
+    #    verir; bugün ise yalnız oda'nın DOLDURAMADIĞI illeri çeker. TİTCK'in de
+    #    veri verdiği chamber illeri (CHAMBER_WITH_TITCK) dahil edilir → yarın +
+    #    oda-yedek kazanır.
+    titck_plates = [p for p in plates
+                    if p not in CHAMBER_PLATES or p in CHAMBER_WITH_TITCK]
     if titck_plates:
         session = TitckSession()
         oda_plates = CHAMBER_PLATES | set(chamber.FALLBACK_SOURCES) | set(chamber.ODA_API_SOURCES)
