@@ -38,6 +38,12 @@ CHAMBER_PLATES = set(chamber.CHAMBER_SOURCES) | {27, 79}
 # için onlar yalnız oda kalır (yarın verisi yok). Yeniden test edilebilir.
 CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 43, 65, 73, 74}
 
+# Dejenere-oda koruması: TİTCK'i de olan bir il, oda sitesinden ANORMAL AZ
+# (< MIN_ODA_TRUST) eczane dönerse o sitenin "kötü günü" sayılır; bu az veriyi
+# "il dolu" kabul edip TİTCK'in tam listesini bloklamayalım — TİTCK devralsın.
+# (30 Haz 2026: Kahramanmaraş oda 1 eczane döndü, TİTCK'in 18'ini blokladı.)
+MIN_ODA_TRUST = 3
+
 
 def active_duty_dates() -> list[str]:
     """e-Devlet formatında (dd/mm/YYYY) aktif nöbet günü + ertesi gün.
@@ -352,7 +358,17 @@ def main() -> int:
         # sayılır. Oda sitesi bayatlamış/erişilemez olduğunda eski kayıt korunsa
         # bile TİTCK devralabilsin diye tazelik kontrolü şart (max doğruluk).
         oda_fresh = set(store.completed_plates(duty_today))
-        oda_filled = {p for p in oda_plates if p in oda_fresh}
+        # Dejenere-oda koruması: TİTCK'i de olan iller için oda ANORMAL AZ
+        # (< MIN_ODA_TRUST) dönmüşse "dolu" SAYMA → TİTCK bugün de çekip
+        # eksik/bozuk oda'yı kurtarsın. Oda'sı dolu (>= eşik) iller TİTCK'ten
+        # korunur (oda-öncelik sürer). Oda kaynağı olmayan iller etkilenmez.
+        titck_capable = set(chamber.FALLBACK_SOURCES) | CHAMBER_WITH_TITCK
+        oda_filled = {
+            p for p in oda_plates
+            if p in oda_fresh
+            and not (p in titck_capable
+                     and store.province_count(duty_today, p) < MIN_ODA_TRUST)
+        }
         today_titck = [p for p in titck_plates if p not in oda_filled]
         ok, fail = scrape_for_date(session, dates[0], today_titck, args.force)
         total_ok += ok
