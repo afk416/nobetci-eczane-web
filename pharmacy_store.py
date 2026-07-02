@@ -86,16 +86,25 @@ def save_province(
     from datetime import datetime, timezone
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    rows = [
-        (
+    # Mükerrer temizleme: bazı kaynaklar (özellikle TİTCK) aynı eczaneyi birden
+    # çok döndürebiliyor (ör. Yozgat'ta "SAĞLIK Boğazlıyan" 9 kez aynı koordinat).
+    # Ad+ilçe+koordinat aynıysa tek kayıt tut (2 Tem 2026).
+    seen = set()
+    rows = []
+    for p in pharmacies:
+        name = p.get("name")
+        if not name:
+            continue
+        key = (name, p.get("district", ""), p.get("lat"), p.get("lng"))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append((
             duty_date, plate, city,
             p.get("district", ""), p.get("district_key", ""),
-            p.get("name", ""), p.get("phone"), p.get("address", ""),
+            name, p.get("phone"), p.get("address", ""),
             p.get("lat"), p.get("lng"),
-        )
-        for p in pharmacies
-        if p.get("name")
-    ]
+        ))
 
     with _write_lock, _connect() as conn:
         conn.execute(

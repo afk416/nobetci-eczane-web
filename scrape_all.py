@@ -36,7 +36,7 @@ CHAMBER_PLATES = set(chamber.CHAMBER_SOURCES) | {27, 79}
 # Oda YİNE önce gelir (oda_filled korur); TİTCK bunlara (a) YARIN verisini, (b)
 # oda erişilemezse BUGÜN yedeğini sağlar. Kalan 10 chamber iline TİTCK 0 döndüğü
 # için onlar yalnız oda kalır (yarın verisi yok). Yeniden test edilebilir.
-CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 43, 65, 73, 74}
+CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 65, 73, 74}  # 43 Kütahya çıkarıldı → TİTCK-öncelikli (oda eksik ilçeler)
 
 # Dejenere-oda koruması: TİTCK'i de olan bir il, oda sitesinden ANORMAL AZ
 # (< MIN_ODA_TRUST) eczane dönerse o sitenin "kötü günü" sayılır; bu az veriyi

@@ -62,7 +62,11 @@ CHAMBER_SOURCES: dict[int, dict] = {
     26: {"url": "https://www.eskisehireo.org.tr/eskisehir-nobetci-eczaneler/", "coords": True},
     30: {"url": "https://www.vaneczaciodasi.org.tr/nobetci-eczaneler",          "coords": True, "multi": True},  # Hakkari (Van sayfası)
     35: {"url": "https://www.izmireczaciodasi.org.tr/nobetci-eczaneler",        "coords": True},
-    43: {"url": "https://www.kutahyaeo.org.tr/nobetci-eczaneler",              "coords": True},
+    # 43 Kütahya: TİTCK-öncelikli yapıldı (2 Tem 2026). Oda sitesi (kutahyaeo)
+    #   yalnız 6 büyük ilçeyi listeliyor; TİTCK 11 ilçeyi kapsıyor (5 kırsal eczane
+    #   —Aslanapa/Domaniç/Hisarcık/Çavdarhisar/Şaphane— oda'da hiç görünmüyordu).
+    #   Oda TİTCK'in alt kümesi olduğu için oda kaynağından çıkarıldı.
+    # 43: {"url": "https://www.kutahyaeo.org.tr/nobetci-eczaneler",              "coords": True},
     44: {"url": "https://www.malatyaeczaciodasi.org.tr/nobetci-eczaneler",      "coords": False},
     49: {"url": "https://www.batmaneczaciodasi.org.tr/nobetci-eczaneler/49",    "coords": True},  # Muş
     65: {"url": "https://www.vaneczaciodasi.org.tr/nobetci-eczaneler",          "coords": True, "multi": True},  # Van
