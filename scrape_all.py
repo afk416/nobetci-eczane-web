@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -43,6 +44,16 @@ CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 65, 73, 74}  # 43 Kütahya çıkarıl
 # "il dolu" kabul edip TİTCK'in tam listesini bloklamayalım — TİTCK devralsın.
 # (30 Haz 2026: Kahramanmaraş oda 1 eczane döndü, TİTCK'in 18'ini blokladı.)
 MIN_ODA_TRUST = 3
+
+# CollectAPI (e-Devlet tabanlı) ile TAMAMLANACAK iller: oda sitesi eksik
+# kalabildiği için ana il Kahramanmaraş burada. Oda listesi BAZ; CollectAPI'de
+# olup oda'da olmayan eczaneler EKLENİR (core-ad + ilçe ile tekilleştirme;
+# koordinat güvenilmez — aynı eczane için kaynaklar arası koord 8 km'ye kadar
+# sapıyor). Yalnız aktif gün (duty_today); CollectAPI "bugünü" verir. Additif:
+# asla silmez, yalnız ekler; CollectAPI erişilemezse mevcut korunur.
+# (4 Tem 2026: oda 17 verirken TEKEREK/Onikişubat + SAĞLIK/Pazarcık eksikti,
+# e-Devlet/CollectAPI 19 veriyor. Token .env COLLECTAPI_TOKEN.)
+COLLECTAPI_SUPPLEMENT = {46}  # Kahramanmaraş (ana il)
 
 
 def active_duty_dates() -> list[str]:
@@ -288,6 +299,63 @@ def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) ->
     return ok, fail
 
 
+def _supp_key(name: str, district: str) -> tuple[str, str]:
+    """Tekilleştirme anahtarı: (çekirdek-ad, ilçe-norm). Oda adları ilçeyi
+    '... -PAZARCIK' son ekiyle taşıyabilir; o zaman onu ilçe olarak kullan."""
+    base, dsuf = name, ""
+    if " -" in name:
+        base, dsuf = name.rsplit(" -", 1)
+    core = chamber._norm(base).replace("ECZANESI", "").replace("ECZANE", "")
+    return core, chamber._norm(district or dsuf)
+
+
+def supplement_collectapi(duty_iso: str, plates: list[int]) -> None:
+    """COLLECTAPI_SUPPLEMENT illerini, depodaki oda listesine CollectAPI'den
+    EKSİK olan eczaneleri ekleyerek tamamlar (yalnız aktif gün). Additif: asla
+    silmez, yalnız ekler. CollectAPI erişilemezse/boşsa mevcut liste korunur."""
+    targets = [p for p in plates if p in COLLECTAPI_SUPPLEMENT]
+    if not targets:
+        return
+    token = (os.environ.get("COLLECTAPI_TOKEN") or "").strip()
+    if not token:
+        logger.warning("COLLECTAPI_TOKEN yok; tamamlama atlandı: %s", targets)
+        return
+
+    for plate in targets:
+        city = PLATE_CITY[plate]
+        existing = store.get_province(duty_iso, plate)
+        res = chamber.scrape_collectapi(city, str(plate), token)
+        if not res.success or not res.pharmacies:
+            logger.warning("CollectAPI tamamlama %s (%d): veri yok; mevcut %d korundu",
+                           city, plate, len(existing))
+            continue
+
+        have = {_supp_key(p.get("name", ""), p.get("district", "")) for p in existing}
+        have_cores = {c for c, d in have if d == ""}  # oda'da ilçesiz (merkez) çekirdekler
+
+        additions = []
+        for c in res.pharmacies:
+            ck, cd = _supp_key(c.get("name", ""), c.get("district", ""))
+            if (ck, cd) in have or ck in have_cores:
+                continue
+            c = dict(c)
+            c["district_key"] = district_key(c.get("district", ""))
+            additions.append(c)
+
+        if not additions:
+            logger.info("CollectAPI tamamlama %s (%d): 0 yeni (oda zaten tam: %d)",
+                        city, plate, len(existing))
+            continue
+
+        merged = list(existing) + additions
+        for p in merged:
+            p.setdefault("district_key", district_key(p.get("district", "")))
+        store.save_province(duty_iso, plate, city, merged)
+        logger.info("CollectAPI tamamlama %s (%d): +%d yeni → %d (oda %d + %s)",
+                    city, plate, len(additions), len(merged), len(existing),
+                    ", ".join(a["name"] for a in additions))
+
+
 def report_empty(duty_iso: str, plates: list[int]) -> None:
     """Tüm kaynaklar denendikten sonra hâlâ verisiz kalan illeri raporlar."""
     empty = [p for p in plates if store.province_count(duty_iso, p) <= 0]
@@ -342,6 +410,10 @@ def main() -> int:
     api_ok, api_fail = scrape_api_sources(duty_today, plates, args.force)
     total_ok += api_ok
     total_fail += api_fail
+
+    # 1b) TAMAMLAMA (bugün): oda'sı eksik kalan iller (ör. ana il Kahramanmaraş)
+    #     CollectAPI/e-Devlet'ten eksik eczanelerle tamamlanır. Additif, tekilli.
+    supplement_collectapi(duty_today, plates)
 
     # 2) TİTCK İKİNCİ SIRADA: oda siteleri TODAY-only olduğu için yarını TİTCK
     #    verir; bugün ise yalnız oda'nın DOLDURAMADIĞI illeri çeker. TİTCK'in de

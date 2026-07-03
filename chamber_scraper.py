@@ -816,6 +816,69 @@ def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
     return ScrapeResult(False, str(plate_code))
 
 
+COLLECTAPI_URL = "https://api.collectapi.com/health/dutyPharmacy"
+
+
+def scrape_collectapi(city: str, plate_code: str, token: str) -> ScrapeResult:
+    """CollectAPI dutyPharmacy ucundan bir ilin nöbetçilerini çeker.
+
+    Oda sitelerinin EKSİK kaldığı iller için TAMAMLAYICI kaynak (özellikle ana
+    il Kahramanmaraş: oda 17 verirken e-Devlet tabanlı CollectAPI 19 veriyor —
+    TEKEREK/Onikişubat ve SAĞLIK/Pazarcık oda'da yok). Dönen dict: name,
+    district, phone, address, lat, lng (ilçe anahtarını scrape_all ekler).
+    token boşsa/başarısızsa success=False + boş liste (çağıran mevcudu korur).
+    """
+    started = time.time()
+    if not token:
+        logger.warning("CollectAPI token yok (COLLECTAPI_TOKEN); %s atlandı", city)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    auth = token if token.lower().startswith("apikey") else f"apikey {token}"
+    il_ascii = _norm(city).title()  # "Kahramanmaraş" -> "Kahramanmaras"
+    try:
+        r = requests.get(
+            COLLECTAPI_URL,
+            params={"il": il_ascii},
+            headers={**HEADERS, "authorization": auth,
+                     "content-type": "application/json"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("CollectAPI %s başarısız: %s", city, exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    if not data.get("success"):
+        logger.warning("CollectAPI %s success=false: %s", city, str(data)[:200])
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    pharmacies: list[dict] = []
+    for item in data.get("result", []):
+        name = (item.get("name") or "").strip()
+        if not name:
+            continue
+        lat = lng = None
+        loc = (item.get("loc") or "").strip()
+        if "," in loc:
+            a, b = (loc.split(",") + [""])[:2]
+            try:
+                lat, lng = float(a), float(b)
+            except ValueError:
+                lat = lng = None
+        pharmacies.append({
+            "name": name,
+            "district": _tr_title(item.get("dist") or ""),
+            "phone": _normalize_phone(item.get("phone")),
+            "address": (item.get("address") or "").strip(),
+            "lat": lat,
+            "lng": lng,
+        })
+
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies,
+                        took=round(time.time() - started, 1))
+
+
 if __name__ == "__main__":
     import json
     import sys
