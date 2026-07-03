@@ -72,11 +72,38 @@ def init_db() -> None:
     logger.info("SQLite depo hazır: %s", DB_PATH)
 
 
+# Dejenere / nöbet-geçişi koruması
+# --------------------------------
+# Oda siteleri 08:30 nöbet geçişinde (ve bazen akşam güncellemesinde) kısa süre
+# YARIM/BOZUK liste döndürebiliyor (ör. 17 eczanelik il aniden 1 eczane). Tam o
+# anda çekim yapılırsa sağlam liste bu bozuk listeyle EZİLİR; bir sonraki taramaya
+# kadar (akşam taramaları kapalıysa gece boyu) kullanıcı eksik liste görür.
+# Koruma: aynı nöbet günü için elde SAĞLAM bir liste (>= GUARD_MIN_EXISTING) varken
+# gelen yeni liste anormal küçükse (<=2 ya da mevcudun 1/3'ünden az) YAZMA, mevcudu
+# koru. Küçük illerde (mevcut < GUARD_MIN_EXISTING) koruma devreye girmez → normal
+# güncellenir. (2 Tem 2026 Kahramanmaraş: 22:00 taraması odayı geçişte yakalayıp
+# 17→1 yazmış, gece boyu tek eczane görünmüştü.)
+GUARD_MIN_EXISTING = 4
+
+
+def _looks_degenerate(new_count: int, existing_count: int) -> bool:
+    """Yeni listenin, mevcut sağlam listeye göre 'geçiş bozuğu' olup olmadığı.
+
+    Aynı (duty_date, plaka) için mevcut liste sağlamsa (>= GUARD_MIN_EXISTING) ve
+    yeni liste ya <=2 ya da mevcudun 1/3'ünden azsa dejenere sayılır. Farklı
+    nöbet günü ilk kez yazılırken mevcut=0 olduğundan koruma devreye girmez.
+    """
+    if existing_count < GUARD_MIN_EXISTING:
+        return False
+    return new_count <= 2 or new_count * 3 < existing_count
+
+
 def save_province(
     duty_date: str,
     plate_code: int | str,
     city: str,
     pharmacies: list[dict],
+    guard: bool = True,
 ) -> None:
     """Bir il için (duty_date) eczaneleri kaydeder; eskisini değiştirir.
 
@@ -107,6 +134,19 @@ def save_province(
         ))
 
     with _write_lock, _connect() as conn:
+        # Dejenere/geçiş koruması: sağlam liste varken bozuk küçük listeyle ezme.
+        prev = conn.execute(
+            "SELECT count FROM scrape_log WHERE duty_date = ? AND plate_code = ?",
+            (duty_date, plate),
+        ).fetchone()
+        existing = int(prev["count"]) if prev else 0
+        if guard and _looks_degenerate(len(rows), existing):
+            logger.warning(
+                "save_province: %s (plaka %s, %s) dejenere/geçiş bozuğu sayıldı "
+                "(%d → %d); mevcut liste KORUNDU, üzerine yazılmadı",
+                city, plate, duty_date, existing, len(rows),
+            )
+            return
         conn.execute(
             "DELETE FROM pharmacies WHERE duty_date = ? AND plate_code = ?",
             (duty_date, plate),
