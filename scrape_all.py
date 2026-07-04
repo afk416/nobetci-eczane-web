@@ -309,10 +309,36 @@ def _supp_key(name: str, district: str) -> tuple[str, str]:
     return core, chamber._norm(district or dsuf)
 
 
+def _fresh_oda(plate: int, city: str) -> list[dict] | None:
+    """Supplement illeri için TAZE oda listesi (tazelik/TİTCK durumundan bağımsız
+    doğrudan oda sitesinden çeker). Böylece supplement TABANI HER ZAMAN oda olur —
+    08:30 sonrası TİTCK'in (farklı isimlendirme) doldurduğu güne karışıp mükerrer
+    üretmez. Alınamazsa None (çağıran mevcut listeyi korur)."""
+    info = chamber.FALLBACK_SOURCES.get(plate) or chamber.CHAMBER_SOURCES.get(plate)
+    if not info:
+        return None
+    try:
+        res = chamber.scrape_chamber(info["url"], city, str(plate),
+                                     multi=info.get("multi", False))
+    except Exception:
+        logger.exception("supplement taze-oda %s (%d) HATA", city, plate)
+        return None
+    if not res.success or not res.pharmacies:
+        return None
+    phs = res.pharmacies
+    if any(p.get("lat") is None for p in phs):
+        chamber.geocode_pharmacies(phs, city)
+    for ph in phs:
+        ph["district_key"] = district_key(ph.get("district", ""))
+    return phs
+
+
 def supplement_collectapi(duty_iso: str, plates: list[int]) -> None:
-    """COLLECTAPI_SUPPLEMENT illerini, depodaki oda listesine CollectAPI'den
-    EKSİK olan eczaneleri ekleyerek tamamlar (yalnız aktif gün). Additif: asla
-    silmez, yalnız ekler. CollectAPI erişilemezse/boşsa mevcut liste korunur."""
+    """COLLECTAPI_SUPPLEMENT illerini oda + CollectAPI birleşimiyle YENİDEN kurar
+    (yalnız aktif gün). Taban = taze oda (TİTCK değil); CollectAPI'den oda'da
+    OLMAYAN eczaneler eklenir. Sonuç duty_iso'yu DEĞİŞTİRİR (TİTCK adlarıyla
+    kirlenmeyi de temizler). oda alınamazsa mevcut korunur; CollectAPI yoksa
+    yalnız oda yazılır (guard küçülmeyi zaten engeller)."""
     targets = [p for p in plates if p in COLLECTAPI_SUPPLEMENT]
     if not targets:
         return
@@ -323,37 +349,36 @@ def supplement_collectapi(duty_iso: str, plates: list[int]) -> None:
 
     for plate in targets:
         city = PLATE_CITY[plate]
-        existing = store.get_province(duty_iso, plate)
-        res = chamber.scrape_collectapi(city, str(plate), token)
-        if not res.success or not res.pharmacies:
-            logger.warning("CollectAPI tamamlama %s (%d): veri yok; mevcut %d korundu",
-                           city, plate, len(existing))
+        oda = _fresh_oda(plate, city)
+        if not oda:
+            logger.warning("CollectAPI tamamlama %s (%d): taze oda alınamadı; mevcut korundu",
+                           city, plate)
             continue
 
-        have = {_supp_key(p.get("name", ""), p.get("district", "")) for p in existing}
+        # dedup anahtarları oda tabanından — CollectAPI ve oda AYNI adlandırmayı
+        # (…ECZANESİ) kullandığı için core-ad eşleşmesi güvenilir.
+        have = {_supp_key(p.get("name", ""), p.get("district", "")) for p in oda}
         have_cores = {c for c, d in have if d == ""}  # oda'da ilçesiz (merkez) çekirdekler
 
         additions = []
-        for c in res.pharmacies:
-            ck, cd = _supp_key(c.get("name", ""), c.get("district", ""))
-            if (ck, cd) in have or ck in have_cores:
-                continue
-            c = dict(c)
-            c["district_key"] = district_key(c.get("district", ""))
-            additions.append(c)
+        res = chamber.scrape_collectapi(city, str(plate), token)
+        if res.success and res.pharmacies:
+            for c in res.pharmacies:
+                ck, cd = _supp_key(c.get("name", ""), c.get("district", ""))
+                if (ck, cd) in have or ck in have_cores:
+                    continue
+                c = dict(c)
+                c["district_key"] = district_key(c.get("district", ""))
+                additions.append(c)
+        else:
+            logger.warning("CollectAPI tamamlama %s (%d): CollectAPI yok; yalnız oda %d",
+                           city, plate, len(oda))
 
-        if not additions:
-            logger.info("CollectAPI tamamlama %s (%d): 0 yeni (oda zaten tam: %d)",
-                        city, plate, len(existing))
-            continue
-
-        merged = list(existing) + additions
-        for p in merged:
-            p.setdefault("district_key", district_key(p.get("district", "")))
+        merged = list(oda) + additions
         store.save_province(duty_iso, plate, city, merged)
-        logger.info("CollectAPI tamamlama %s (%d): +%d yeni → %d (oda %d + %s)",
-                    city, plate, len(additions), len(merged), len(existing),
-                    ", ".join(a["name"] for a in additions))
+        extra = (" (+" + ", ".join(a["name"] for a in additions) + ")") if additions else ""
+        logger.info("CollectAPI tamamlama %s (%d): oda %d + %d yeni = %d%s",
+                    city, plate, len(oda), len(additions), len(merged), extra)
 
 
 def report_empty(duty_iso: str, plates: list[int]) -> None:
