@@ -94,6 +94,11 @@ def init_db() -> None:
 # 17→1 yazmış, gece boyu tek eczane görünmüştü.)
 GUARD_MIN_EXISTING = 4
 
+# Operasyonel kaçış kapısı: meşru bir gün-içi küçülme (ör. odanın 6→2
+# düzeltmesi) guard'a takılırsa `scrape_all.py --plates X --force --no-guard`
+# ile bu bayrak kapatılıp yeniden çekilir. Varsayılan HEP açık.
+GUARD_ENABLED = True
+
 
 def _looks_degenerate(new_count: int, existing_count: int) -> bool:
     """Yeni listenin, mevcut sağlam listeye göre 'geçiş bozuğu' olup olmadığı.
@@ -150,11 +155,12 @@ def save_province(
             (duty_date, plate),
         ).fetchone()
         existing = int(prev["count"]) if prev else 0
-        if guard and _looks_degenerate(len(rows), existing):
+        if guard and GUARD_ENABLED and _looks_degenerate(len(rows), existing):
             logger.warning(
                 "save_province: %s (plaka %s, %s) dejenere/geçiş bozuğu sayıldı "
-                "(%d → %d); mevcut liste KORUNDU, üzerine yazılmadı",
-                city, plate, duty_date, existing, len(rows),
+                "(%d → %d); mevcut liste KORUNDU, üzerine yazılmadı "
+                "(meşru küçülmeyse: --plates %s --force --no-guard)",
+                city, plate, duty_date, existing, len(rows), plate,
             )
             return
         conn.execute(

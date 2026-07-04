@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,21 @@ from provinces import ALL_PLATE_CODES, PLATE_CITY, district_key
 from titck_scraper import TitckSession
 
 logger = logging.getLogger("scrape_all")
+
+# Sentry: verisiz-il alarmı için (report_empty). DSN yoksa sessizce devre dışı.
+# (4 Tem 2026: Kırşehir 3 gün verisiz kaldı, uyarı yalnız journal'daydı — kimse
+# görmedi. Artık verisiz il kalırsa Sentry event → e-posta bildirimi.)
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.environ.get("ENVIRONMENT", "production"),
+            traces_sample_rate=0.0,
+        )
+    except Exception:  # sentry kurulu değilse scrape'i engelleme
+        _SENTRY_DSN = ""
 
 TURKEY_TZ = timezone(timedelta(hours=3))
 PROVINCE_DELAY = 2.5   # iller arası nazik gecikme (saniye) — throttle'ı tetiklememek için
@@ -68,9 +84,19 @@ def scrape_for_date(
     date_ddmmyyyy: str,
     plates: list[int],
     force: bool,
+    always_include: set[int] | None = None,
 ) -> tuple[int, int]:
+    """always_include: tazelik filtresine TAKILMADAN çekilecek plakalar.
+
+    MIN_ODA_TRUST kurtarması için şart: dejenere oda az önce yazdığı için il
+    'taze' görünür ve buradaki done filtresi kurtarılacak ili atlardı → kurtarma
+    ölü koddu (4 Tem 2026 denetim bulgusu). main() kurtarma kümesini buraya
+    geçirerek filtreyi deler.
+    """
     duty_iso = iso_date(date_ddmmyyyy)
     done = set() if force else store.completed_plates(duty_iso)
+    if always_include:
+        done -= set(always_include)
     pending = [p for p in plates if p not in done]
 
     logger.info(
@@ -149,11 +175,13 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
         city = PLATE_CITY[plate]
         try:
             if plate in (27, 79):
+                # Eflatunweb (Gaziantep/Kilis) özel parser — tarih doğrulaması yok
                 res = chamber.scrape_gaziantep_eo(str(plate), want_kilis=(plate == 79))
             else:
                 info = chamber.CHAMBER_SOURCES[plate]
                 res = chamber.scrape_chamber(
-                    info["url"], city, str(plate), multi=info.get("multi", False)
+                    info["url"], city, str(plate), multi=info.get("multi", False),
+                    duty_iso=duty_iso,
                 )
         except Exception:
             logger.exception("[%d/%d] oda %s (%d) HATA", i, len(targets), city, plate)
@@ -212,13 +240,25 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
         info = chamber.FALLBACK_SOURCES[plate]
         try:
             res = chamber.scrape_chamber(
-                info["url"], city, str(plate), multi=info.get("multi", False)
+                info["url"], city, str(plate), multi=info.get("multi", False),
+                duty_iso=duty_iso,
             )
         except Exception:
             logger.exception("oda %s (%d) HATA", city, plate)
             fail += 1
             time.sleep(CHAMBER_DELAY)
             continue
+
+        # Çok-illi ama slug'ı YOK SAYAN sayfa (aksarayeo: Aksaray+Kırşehir karışık):
+        # il ayrımı enlem eşiğiyle yapılır (lat_min/lat_max, kaynak tanımında).
+        lo, hi = info.get("lat_min"), info.get("lat_max")
+        if res.success and (lo is not None or hi is not None):
+            res.pharmacies[:] = [
+                p for p in res.pharmacies
+                if p.get("lat") is not None
+                and (lo is None or p["lat"] >= lo)
+                and (hi is None or p["lat"] <= hi)
+            ]
 
         if not res.success or not res.pharmacies:
             logger.warning("oda %s (%d) veri yok -> TİTCK devralacak", city, plate)
@@ -289,14 +329,25 @@ def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) ->
 
 
 def report_empty(duty_iso: str, plates: list[int]) -> None:
-    """Tüm kaynaklar denendikten sonra hâlâ verisiz kalan illeri raporlar."""
+    """Tüm kaynaklar denendikten sonra hâlâ verisiz kalan illeri raporlar.
+
+    Sessiz ölüm koruması: verisiz il varsa Sentry'ye event atılır (e-posta
+    bildirimi). Kırşehir 2-4 Tem arası 3 gün verisiz kaldı ve uyarı yalnız
+    journal'da kaldığı için kimse fark etmedi.
+    """
     empty = [p for p in plates if store.province_count(duty_iso, p) <= 0]
     if empty:
-        logger.warning(
-            "⚠ BUGÜN VERİSİZ İLLER (%d/%d): %s",
-            len(empty), len(plates),
-            ", ".join(f"{p} {PLATE_CITY[p]}" for p in empty),
-        )
+        detay = ", ".join(f"{p} {PLATE_CITY[p]}" for p in empty)
+        logger.warning("⚠ BUGÜN VERİSİZ İLLER (%d/%d): %s", len(empty), len(plates), detay)
+        if _SENTRY_DSN:
+            try:
+                import sentry_sdk
+                sentry_sdk.capture_message(
+                    f"Nobetcim scrape: verisiz iller ({duty_iso}): {detay}",
+                    level="error",
+                )
+            except Exception:
+                pass
     else:
         logger.info("Tüm iller (%d) için veri mevcut.", len(plates))
 
@@ -306,6 +357,9 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="tümünü yeniden çek")
     parser.add_argument("--plates", type=str, default="", help="virgüllü plaka listesi")
     parser.add_argument("--today-only", action="store_true", help="sadece bugün")
+    parser.add_argument("--no-guard", action="store_true",
+                        help="dejenere/geçiş guard'ını bu koşuda kapat "
+                             "(meşru gün-içi küçülme guard'a takılırsa kurtarma yolu)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -314,6 +368,9 @@ def main() -> int:
     )
 
     store.init_db()
+    if args.no_guard:
+        store.GUARD_ENABLED = False
+        logger.warning("Dejenere guard KAPALI (--no-guard) — bu koşudaki tüm yazımlar guard'sız")
 
     if args.plates:
         plates = [int(x) for x in args.plates.split(",") if x.strip().isdigit()]
@@ -358,19 +415,34 @@ def main() -> int:
         # sayılır. Oda sitesi bayatlamış/erişilemez olduğunda eski kayıt korunsa
         # bile TİTCK devralabilsin diye tazelik kontrolü şart (max doğruluk).
         oda_fresh = set(store.completed_plates(duty_today))
-        # Dejenere-oda koruması: TİTCK'i de olan iller için oda ANORMAL AZ
+        # Dejenere-oda kurtarması: TİTCK'i de olan iller için oda ANORMAL AZ
         # (< MIN_ODA_TRUST) dönmüşse "dolu" SAYMA → TİTCK bugün de çekip
         # eksik/bozuk oda'yı kurtarsın. Oda'sı dolu (>= eşik) iller TİTCK'ten
         # korunur (oda-öncelik sürer). Oda kaynağı olmayan iller etkilenmez.
+        # rescue kümesi scrape_for_date'e AYRICA geçirilir: il az önce oda
+        # tarafından yazıldığı için 'taze' görünür ve oradaki done filtresi
+        # kurtarmayı öldürüyordu (4 Tem 2026 denetim: ölü kod bulgusu).
         titck_capable = set(chamber.FALLBACK_SOURCES) | CHAMBER_WITH_TITCK
-        oda_filled = {
+        rescue = {
             p for p in oda_plates
-            if p in oda_fresh
-            and not (p in titck_capable
-                     and store.province_count(duty_today, p) < MIN_ODA_TRUST)
+            if p in oda_fresh and p in titck_capable
+            and store.province_count(duty_today, p) < MIN_ODA_TRUST
         }
+        oda_filled = {p for p in oda_plates if p in oda_fresh} - rescue
         today_titck = [p for p in titck_plates if p not in oda_filled]
-        ok, fail = scrape_for_date(session, dates[0], today_titck, args.force)
+
+        # 08:30 ÖNCESİ koşularda "bugün" = SONA ERMEKTE OLAN dün: TİTCK gece
+        # yarısından sonra o günü listeden kaldırıyor → her sabah ~10 il %100
+        # boşa istek + 'yanlış gün' uyarısı (kanıtlı israf). Roster 08:30'a
+        # kadar sabit olduğundan verisi olan ili yeniden istemeye gerek yok;
+        # yalnız HİÇ verisi olmayanlar (ve rescue) denensin.
+        now = datetime.now(TURKEY_TZ)
+        if now < now.replace(hour=8, minute=30, second=0, microsecond=0):
+            today_titck = [p for p in today_titck
+                           if p in rescue or store.province_count(duty_today, p) <= 0]
+
+        ok, fail = scrape_for_date(session, dates[0], today_titck, args.force,
+                                   always_include=rescue)
         total_ok += ok
         total_fail += fail
         # YARIN (ve sonrası): tüm TİTCK illeri (oda yarını vermez)
@@ -382,9 +454,16 @@ def main() -> int:
     # Hâlâ verisiz kalan illeri raporla
     report_empty(duty_today, plates)
 
-    # Eski nöbet günlerini temizle (aktif günleri tut)
-    keep = [iso_date(d) for d in dates]
-    pruned = store.prune_old(keep)
+    # Eski nöbet günlerini temizle — YALNIZ argümansız tam koşuda. Tek-il
+    # (--plates) veya --today-only koşularında prune GLOBAL çalışıp diğer
+    # illerin/günlerin verisini silebilirdi (ör. --today-only 08:30 öncesi
+    # çalışsa keep=[dün] kalır, TÜM illerin bugün+yarın verisi silinirdi).
+    # Pencere koşu SONUNDA yeniden hesaplanıp birleştirilir: 08:30'u ortasında
+    # geçen koşu, geçiş sonrası yazılmış yeni günü silmesin (yarış koruması).
+    pruned = 0
+    if not args.plates and not args.today_only:
+        keep = {iso_date(d) for d in dates} | {iso_date(d) for d in active_duty_dates()}
+        pruned = store.prune_old(sorted(keep))
 
     logger.info(
         "BİTTİ: %d başarılı, %d başarısız, %d eski satır silindi, toplam %.0fs",

@@ -46,6 +46,38 @@ MAPS_RE = re.compile(r"maps\?q=(-?[\d.]+),(-?[\d.]+)")
 SECTION_RE = re.compile(r"Bug.n\s+N.bet.i\s+Eczaneler", re.IGNORECASE)
 DATE_PREFIX_RE = re.compile(r"^\d{1,2}\s+\S+\s+\d{4}\s+")
 
+# "04 Temmuz 2026 ..." başlık tarihini ayrıştırmak için (ASCII-normalize ay adları)
+_HEADER_DATE_RE = re.compile(r"^(\d{1,2})\s+([^\s\d]+)\s+(\d{4})")
+_TR_MONTHS = {
+    "OCAK": 1, "SUBAT": 2, "MART": 3, "NISAN": 4, "MAYIS": 5, "HAZIRAN": 6,
+    "TEMMUZ": 7, "AGUSTOS": 8, "EYLUL": 9, "EKIM": 10, "KASIM": 11, "ARALIK": 12,
+}
+
+
+def _page_duty_date(soup) -> str | None:
+    """Oda sayfası başlığındaki nöbet tarihini ISO döner (bulunamazsa None).
+
+    OBEN başlık formatı: "04 Temmuz 2026 Van'da Bugün Nöbetçi Eczaneler".
+    Oda siteleri gün dönüşünü FARKLI saatlerde yapar (kimi gece yarısı, kimi
+    08:30-09:00); bu tarih, çekilen listenin istenen nöbet gününe ait olup
+    olmadığını doğrulamak için kullanılır (TİTCK'teki yanlış-gün korumasının
+    oda karşılığı — 4 Tem 2026: her sabah 07:37'de erken dönen sitelerin
+    yarım listesi dünün üstüne yazılıyordu: Kayseri 14→5, Mersin 24→17...).
+    Tarihsiz başlıklı sayfalarda None döner → doğrulama atlanır.
+    """
+    for h in soup.find_all(["h1", "h2", "h3", "h4"]):
+        text = " ".join(h.get_text(" ", strip=True).split())
+        if not text or not SECTION_RE.search(text):
+            continue
+        m = _HEADER_DATE_RE.match(text)
+        if not m:
+            continue
+        month = _TR_MONTHS.get(_norm(m.group(2)))
+        if not month:
+            continue
+        return f"{int(m.group(3)):04d}-{month:02d}-{int(m.group(1)):02d}"
+    return None
+
 # TİTCK'e veri beslemeyen 20 ilin eczacı odası kaynakları.
 # Çoğu OBEN Teknoloji platformu (server-rendered HTML, maps?q= koordinat).
 # Bazı sayfalar birden çok il içerir; il başlıklarına göre süzülür.
@@ -93,6 +125,12 @@ FALLBACK_SOURCES: dict[int, dict] = {
     32: {"url": "https://www.ispartaeo.org.tr/nobetci-eczaneler",          "coords": True},  # Isparta
     37: {"url": "https://www.kastamonueo.org.tr/nobetci-eczaneler/37",     "coords": True},  # Kastamonu
     39: {"url": "https://www.kirklarelieo.org.tr/nobetci-eczaneler",       "coords": True},  # Kırklareli
+    # 40 Kırşehir: 34. Bölge AKSARAY-Kırşehir odasına bağlı; aksarayeo sayfası
+    # slug'ı YOK SAYAR ve iki ilin eczanelerini KARIŞIK döner (4 Tem 2026 keşfi:
+    # 10 Aksaray + 4 Kırşehir). Ayrım enlem eşiğiyle: Kırşehir'in en güney ilçesi
+    # Mucur ~39.06, Aksaray'ın en kuzeyi Sarıyahşi ~38.98 → eşik 39.02. TİTCK
+    # Kırşehir'e sürekli 0 döndürdüğü için (3 gün verisiz kaldı) oda tek kaynak.
+    40: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True, "lat_min": 39.02},  # Kırşehir
     45: {"url": "https://www.manisaeczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Manisa
     46: {"url": "https://www.kahramanmaraseo.org.tr/nobetci-eczaneler",    "coords": True},  # Kahramanmaraş
     47: {"url": "https://www.mardineczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Mardin
@@ -104,7 +142,9 @@ FALLBACK_SOURCES: dict[int, dict] = {
     61: {"url": "https://www.trabzoneczaciodasi.org.tr/nobetci-eczaneler/61", "coords": True},  # Trabzon
     66: {"url": "https://www.yozgateo.org.tr/nobetci-eczaneler",           "coords": True},  # Yozgat
     67: {"url": "https://www.zonguldakeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Zonguldak
-    68: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True},  # Aksaray
+    # 68 Aksaray: sayfa Kırşehir'le KARIŞIK (bkz. 40 notu) → lat_max ile süzülür.
+    # Bu filtre olmadan 4 Kırşehir eczanesi Aksaray listesine karışıyordu (BUG, 4 Tem düzeltildi).
+    68: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True, "lat_max": 39.02},  # Aksaray
     80: {"url": "https://www.osmaniyeeczaciodasi.org.tr/nobetci-eczaneler", "coords": True},  # Osmaniye
     # 2026-06 keşfi (discover-oda-sites workflow): OBEN parser'ın tuttuğu, il-bazlı
     # filtreli URL'lerle doğrulanmış 21 il daha. Çoğu komşu illeri tek odadan
@@ -501,6 +541,7 @@ def scrape_chamber(
     expected_province: str,
     plate_code: str,
     multi: bool = False,
+    duty_iso: str | None = None,
 ) -> ScrapeResult:
     """Bir oda sayfasından, beklenen ile ait nöbetçi eczaneleri çeker.
 
@@ -509,11 +550,25 @@ def scrape_chamber(
     başlığındaki ile göre süzülür. multi=False ise sayfa tek illidir ve
     tüm eczaneler beklenen ile atanır (başlık formatları çok değişken
     olduğu için tek illi sayfalarda başlığa güvenilmez).
+
+    duty_iso verilirse sayfa başlığındaki tarih onunla karşılaştırılır;
+    uyuşmuyorsa (site farklı günün listesini gösteriyor) success=False
+    döner ve hiçbir şey yazılmaz (yanlış-gün koruması). Tarihsiz
+    sayfalarda doğrulama atlanır.
     """
     started = time.time()
     soup = _fetch(url)
     if soup is None:
         return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    if duty_iso:
+        page_date = _page_duty_date(soup)
+        if page_date and page_date != duty_iso:
+            logger.warning(
+                "oda %s (%s): sayfa tarihi %s != istenen %s; YAZILMADI (yanlış gün)",
+                expected_province, plate_code, page_date, duty_iso,
+            )
+            return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
 
     want = _norm(expected_province)
     anchors = soup.find_all("a", href=MAPS_RE)
