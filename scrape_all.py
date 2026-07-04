@@ -361,15 +361,29 @@ def supplement_collectapi(duty_iso: str, plates: list[int]) -> None:
         have_cores = {c for c, d in have if d == ""}  # oda'da ilçesiz (merkez) çekirdekler
 
         additions = []
+        matched = 0
         res = chamber.scrape_collectapi(city, str(plate), token)
         if res.success and res.pharmacies:
             for c in res.pharmacies:
                 ck, cd = _supp_key(c.get("name", ""), c.get("district", ""))
                 if (ck, cd) in have or ck in have_cores:
-                    continue
-                c = dict(c)
-                c["district_key"] = district_key(c.get("district", ""))
-                additions.append(c)
+                    matched += 1
+                else:
+                    c = dict(c)
+                    c["district_key"] = district_key(c.get("district", ""))
+                    additions.append(c)
+            # ÖRTÜŞME KORUMASI: CollectAPI ile oda AYNI günün nöbetini gösteriyorsa
+            # (yeterince eşleşme) eksikleri ekle. Örtüşmüyorsa kaynaklar farklı güne
+            # dönmüş demektir — oda 08:30'da döner, CollectAPI daha GEÇ döner; o pencerede
+            # CollectAPI dünün/başka günün listesini verir. Birleştirmek iki farklı günü
+            # üst üste bindirip mükerrer üretir (4 Tem 2026: oda-Julı4 18 + CollectAPI-Julı3
+            # 19 = 37). Örtüşme yoksa EKLEME, yalnız oda kalsın (CollectAPI güne dönünce
+            # sonraki tarama eksikleri ekler).
+            if matched < max(3, len(oda) // 2):
+                logger.warning("CollectAPI tamamlama %s (%d): CollectAPI(%d) oda(%d) ile "
+                               "örtüşmüyor (eşleşen %d) → farklı gün/lag, yalnız oda yazıldı",
+                               city, plate, len(res.pharmacies), len(oda), matched)
+                additions = []
         else:
             logger.warning("CollectAPI tamamlama %s (%d): CollectAPI yok; yalnız oda %d",
                            city, plate, len(oda))
@@ -377,8 +391,8 @@ def supplement_collectapi(duty_iso: str, plates: list[int]) -> None:
         merged = list(oda) + additions
         store.save_province(duty_iso, plate, city, merged)
         extra = (" (+" + ", ".join(a["name"] for a in additions) + ")") if additions else ""
-        logger.info("CollectAPI tamamlama %s (%d): oda %d + %d yeni = %d%s",
-                    city, plate, len(oda), len(additions), len(merged), extra)
+        logger.info("CollectAPI tamamlama %s (%d): oda %d + %d yeni = %d (eşleşen %d)%s",
+                    city, plate, len(oda), len(additions), len(merged), matched, extra)
 
 
 def report_empty(duty_iso: str, plates: list[int]) -> None:
