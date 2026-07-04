@@ -122,7 +122,7 @@ def scrape_for_date(
             continue
 
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
-        store.save_province(duty_iso, plate, city, res.pharmacies)
+        store.save_province(duty_iso, plate, city, res.pharmacies, source="titck")
         logger.info(
             "[%d/%d] %s (%d): %d eczane (%d koordinatlı) %.1fs",
             i, len(pending), city, plate, len(res.pharmacies), with_coords, res.took,
@@ -139,7 +139,7 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
     Koordinatsız sitelerin (Malatya, Gaziantep, Kilis) eczaneleri Nominatim
     ile geocode edilir (sonuç önbelleğe alınır).
     """
-    done = set() if force else store.completed_plates(duty_iso)
+    done = set() if force else store.completed_plates(duty_iso, source="oda")
     targets = [p for p in plates if p in CHAMBER_PLATES and p not in done]
     logger.info("Oda kaynakları (%s): %d il bekliyor, %d atlandı",
                 duty_iso, len(targets), len(CHAMBER_PLATES & set(plates)) - len(targets))
@@ -182,7 +182,7 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
             ph["district_key"] = district_key(ph.get("district", ""))
 
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
-        store.save_province(duty_iso, plate, city, res.pharmacies)
+        store.save_province(duty_iso, plate, city, res.pharmacies, source="oda")
         logger.info("[%d/%d] oda %s (%d): %d eczane (%d koordinatlı) %.1fs",
                     i, len(targets), city, plate, len(res.pharmacies), with_coords, res.took)
         ok += 1
@@ -199,7 +199,7 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
     doldurur. Taze-tamamlanmış iller atlanır (freshness). Oda boş dönerse
     mevcut dolu veriyi EZMEZ (kayıt yapılmaz).
     """
-    done = set() if force else store.completed_plates(duty_iso)
+    done = set() if force else store.completed_plates(duty_iso, source="oda")
     targets = [p for p in plates if p in chamber.FALLBACK_SOURCES and p not in done]
     if not targets:
         return 0, 0
@@ -232,7 +232,7 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
             ph["district_key"] = district_key(ph.get("district", ""))
 
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
-        store.save_province(duty_iso, plate, city, res.pharmacies)
+        store.save_province(duty_iso, plate, city, res.pharmacies, source="oda")
         logger.info("ODA %s (%d): %d eczane (%d koordinatlı) %.1fs",
                     city, plate, len(res.pharmacies), with_coords, res.took)
         ok += 1
@@ -248,7 +248,7 @@ def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) ->
     doğru parser'a yönlendirir. Boş dönerse mevcut veriyi ezmez; taze-tamamlanmış
     iller atlanır.
     """
-    done = set() if force else store.completed_plates(duty_iso)
+    done = set() if force else store.completed_plates(duty_iso, source="oda")
     targets = [p for p in plates if p in chamber.ODA_API_SOURCES and p not in done]
     if not targets:
         return 0, 0
@@ -279,7 +279,7 @@ def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) ->
             ph["district_key"] = district_key(ph.get("district", ""))
 
         with_coords = sum(1 for p in res.pharmacies if p.get("lat") and p.get("lng"))
-        store.save_province(duty_iso, plate, city, res.pharmacies)
+        store.save_province(duty_iso, plate, city, res.pharmacies, source="oda")
         logger.info("ODA-API %s (%d): %d eczane (%d koordinatlı) %.1fs",
                     city, plate, len(res.pharmacies), with_coords, res.took)
         ok += 1

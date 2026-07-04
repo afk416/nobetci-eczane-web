@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS scrape_log (
     plate_code INTEGER NOT NULL,
     count      INTEGER NOT NULL DEFAULT 0,
     scraped_at TEXT    NOT NULL,
+    source     TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (duty_date, plate_code)
 );
 
@@ -69,6 +70,14 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        # Mevcut DB migrasyonu: scrape_log.source kolonu yoksa ekle (kaynak
+        # bazlı tazelik için; oda kendi doldurduğunu atlar, TİTCK'i devralır).
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(scrape_log)")}
+        if "source" not in cols:
+            conn.execute(
+                "ALTER TABLE scrape_log ADD COLUMN source TEXT NOT NULL DEFAULT ''"
+            )
+            logger.info("scrape_log.source kolonu eklendi (migrasyon)")
     logger.info("SQLite depo hazır: %s", DB_PATH)
 
 
@@ -104,6 +113,7 @@ def save_province(
     city: str,
     pharmacies: list[dict],
     guard: bool = True,
+    source: str = "",
 ) -> None:
     """Bir il için (duty_date) eczaneleri kaydeder; eskisini değiştirir.
 
@@ -159,11 +169,11 @@ def save_province(
                 rows,
             )
         conn.execute(
-            "INSERT INTO scrape_log (duty_date, plate_code, count, scraped_at) "
-            "VALUES (?,?,?,?) "
+            "INSERT INTO scrape_log (duty_date, plate_code, count, scraped_at, source) "
+            "VALUES (?,?,?,?,?) "
             "ON CONFLICT(duty_date, plate_code) DO UPDATE SET "
-            "count=excluded.count, scraped_at=excluded.scraped_at",
-            (duty_date, plate, len(rows), now_iso),
+            "count=excluded.count, scraped_at=excluded.scraped_at, source=excluded.source",
+            (duty_date, plate, len(rows), now_iso, source),
         )
 
 
@@ -179,23 +189,34 @@ def get_province(duty_date: str, plate_code: int | str) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def completed_plates(duty_date: str, fresh_minutes: int = FRESH_MINUTES) -> set[int]:
+def completed_plates(
+    duty_date: str,
+    fresh_minutes: int = FRESH_MINUTES,
+    source: str | None = None,
+) -> set[int]:
     """Verilen nöbet günü için 'tamamlandı' (bu turda atlanacak) plaka kodları.
 
     Bir il atlanır ancak: count>0 (veri var) VE son başarılı çekimi
     fresh_minutes'ten yeni. Daha eski çekimler tekrar denenir -> gün içi/gece
     tazeleme (gece nöbetçisi değişimini yakalamak için).
 
+    source verilirse YALNIZCA o kaynaktan (ör. 'oda') taze doldurulmuş iller
+    döner. Oda taraması `source='oda'` ile çağırır → böylece TİTCK'in "yarın"
+    diye doldurup 08:30'da aktifleşen günü ATLAMAZ, geçişte hemen devralır
+    (oda = Google koordinatı). Oda kendi doldurduğunu ise atlar (nezaket).
+
     count=0 olan iller 'tamamlandı' sayılmaz: e-Devlet hızlı isteklerde bazen
     boş forma döndürüyor (geçici 0); böylece sonraki tur tekrar dener.
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=fresh_minutes)).isoformat()
+    sql = ("SELECT plate_code FROM scrape_log "
+           "WHERE duty_date = ? AND count > 0 AND scraped_at >= ?")
+    params: list = [duty_date, cutoff]
+    if source is not None:
+        sql += " AND source = ?"
+        params.append(source)
     with _connect() as conn:
-        cur = conn.execute(
-            "SELECT plate_code FROM scrape_log "
-            "WHERE duty_date = ? AND count > 0 AND scraped_at >= ?",
-            (duty_date, cutoff),
-        )
+        cur = conn.execute(sql, params)
         return {int(r["plate_code"]) for r in cur.fetchall()}
 
 
