@@ -388,15 +388,31 @@ def main() -> int:
 
     # 1) ODA-ÖNCELİK (bugün): eczacı odası siteleri değişimi ANINDA yansıtır.
     #    Oda kaynaklı tüm iller önce odadan çekilir (TİTCK'siz 20 il + fallback 26).
-    chamber_ok, chamber_fail = scrape_chambers(duty_today, plates, args.force)
+    #    08:30 ÖNCESİ İSTİSNA: sona ermekte olan günün listesi SABİTTİR; o saatte
+    #    oda siteleri ya yeni güne dönmüştür (tarih doğrulaması yakalar) ya da
+    #    başlık eski tarihte kalırken listeyi KIRPIYORDUR (5 Tem: Tekirdağ 22→15,
+    #    başlık hâlâ 04 Temmuz — tarih doğrulaması yakalayamaz). Verisi olan ilin
+    #    odasına hiç dokunma; yalnız hiç verisi olmayanlar denensin.
+    now0 = datetime.now(TURKEY_TZ)
+    if now0 < now0.replace(hour=8, minute=30, second=0, microsecond=0):
+        oda_scrape_plates = [p for p in plates
+                             if store.province_count(duty_today, p) <= 0]
+        if len(oda_scrape_plates) < len(plates):
+            logger.info("08:30 öncesi: biten günün odası dokunulmadan korunuyor "
+                        "(%d il atlandı, %d verisiz il denenecek)",
+                        len(plates) - len(oda_scrape_plates), len(oda_scrape_plates))
+    else:
+        oda_scrape_plates = plates
+
+    chamber_ok, chamber_fail = scrape_chambers(duty_today, oda_scrape_plates, args.force)
     total_ok += chamber_ok
     total_fail += chamber_fail
 
-    fb_ok, fb_fail = scrape_fallbacks(duty_today, plates, args.force)
+    fb_ok, fb_fail = scrape_fallbacks(duty_today, oda_scrape_plates, args.force)
     total_ok += fb_ok
     total_fail += fb_fail
 
-    api_ok, api_fail = scrape_api_sources(duty_today, plates, args.force)
+    api_ok, api_fail = scrape_api_sources(duty_today, oda_scrape_plates, args.force)
     total_ok += api_ok
     total_fail += api_fail
 
