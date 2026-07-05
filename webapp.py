@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
+import pharmacy_store as store
 from pharmacy_scraper import fetch_pharmacies, get_location_info
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -123,9 +124,36 @@ def favicon():
     return resp
 
 
+# Veri bu süreden bayatsa healthz "hasta" der. En uzun normal tarama boşluğu
+# 17:30 → 07:35 ≈ 14 saat; 20 saat = bir sabah bloğu tamamen kaçarsa bile
+# öğleden önce alarm çalar, tek koşu aksamasında yanlış alarm çalmaz.
+HEALTHZ_STALE_HOURS = 20
+
+
 @app.route("/healthz")
 def healthz():
-    return {"status": "ok"}, 200
+    """Sağlık ucu: süreç ayakta MI + veri taze Mİ (UptimeRobot 5 dk'da bir bakar).
+
+    Kör-nokta kapatma (5 Tem 2026): zamanlayıcı sessizce ölürse site açık
+    kalıyordu ve kimse fark etmiyordu. Artık son scrape HEALTHZ_STALE_HOURS'tan
+    eskiyse 503 döner → UptimeRobot DOWN sayar → e-posta alarmı.
+    """
+    try:
+        last = store.latest_scrape_iso()
+        if not last:
+            return {"status": "no-data"}, 503
+        dt = datetime.fromisoformat(last)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+        body = {"status": "ok", "last_scrape_hours_ago": round(age_h, 1)}
+        if age_h > HEALTHZ_STALE_HOURS:
+            body["status"] = "stale"
+            return body, 503
+        return body, 200
+    except Exception:
+        logger.exception("healthz veri-tazeliği kontrolü başarısız")
+        return {"status": "error"}, 503
 
 
 @app.route("/api/pharmacies")

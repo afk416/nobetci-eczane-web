@@ -226,6 +226,17 @@ def completed_plates(
         return {int(r["plate_code"]) for r in cur.fetchall()}
 
 
+def latest_scrape_iso() -> str | None:
+    """En son scrape yazımının UTC ISO zamanı (hiç yoksa None).
+
+    /healthz veri-tazeliği kontrolü için: zamanlayıcı sessizce ölürse site
+    ayakta kalır ama bu değer bayatlar → healthz 503 döner → UptimeRobot
+    DOWN sayar → e-posta alarmı (5 Tem 2026, kör-nokta kapatma)."""
+    with _connect() as conn:
+        row = conn.execute("SELECT MAX(scraped_at) AS m FROM scrape_log").fetchone()
+        return row["m"] if row and row["m"] else None
+
+
 def province_count(duty_date: str, plate_code: int | str) -> int:
     """Depoda kayıtlı eczane sayısı (yoksa -1 = hiç scrape edilmemiş)."""
     with _connect() as conn:
