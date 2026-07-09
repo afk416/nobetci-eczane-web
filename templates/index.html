@@ -842,16 +842,26 @@ function getLocation() {
       reject(new Error("Tarayıcın konum özelliğini desteklemiyor."));
       return;
     }
-    const GOOD_ACCURACY = 500;   // m — bu hassasiyete ulaşınca hemen kullan
-    const SOFT_WAIT = 5000;      // ms — bu süre sonunda eldeki en iyi fix'i kullan (varsa)
-    const HARD_TIMEOUT = 15000;  // ms — konum hiç alınamazsa bu sürede hata ver
-    let best = null, watchId = null, softTimer = null, softPassed = false, done = false;
+    const GOOD_ACCURACY = 500;      // m — bu hassasiyete ulaşınca hemen kullan
+    const SUSPECT_ACCURACY = 10000; // m — bundan kabaysa IP tahminidir: YANLIŞ İL çıkabilir
+    const SOFT_WAIT = 5000;         // ms — makul (<=10 km) fix'i bu sürede kullan
+    const EXT_WAIT  = 12000;        // ms — kaba (>10 km) fix'e ancak bu sürede razı ol
+    const HARD_TIMEOUT = 15000;     // ms — konum hiç alınamazsa bu sürede hata ver
+    // (9 Tem vakası: masaüstünde ilk fix IP-tabanlı Kayseri çıktı [gerçek: K.Maraş];
+    //  5 sn'de kaba fix'e razı olunca yanlış ilin listesi gösterildi. Artık kaba
+    //  fix için 12 sn'ye kadar rafine fix beklenir; yine kabaysa uyarı gösterilir.)
+    let best = null, watchId = null, softTimer = null, extTimer = null;
+    let softPassed = false, extPassed = false, done = false;
 
+    const cleanup = () => {
+      if (softTimer) clearTimeout(softTimer);
+      if (extTimer) clearTimeout(extTimer);
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    };
     const resolveWithBest = () => {
       if (done || !best) return;
       done = true;
-      if (softTimer) clearTimeout(softTimer);
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      cleanup();
       _lastLoc = {
         lat: best.coords.latitude,
         lng: best.coords.longitude,
@@ -859,19 +869,24 @@ function getLocation() {
       };
       resolve({ lat: best.coords.latitude, lng: best.coords.longitude });
     };
+    const maybeResolve = () => {
+      if (!best) return;
+      const acc = best.coords.accuracy;
+      if (acc <= GOOD_ACCURACY) { resolveWithBest(); return; }          // hassas: hemen
+      if (softPassed && acc <= SUSPECT_ACCURACY) { resolveWithBest(); return; } // makul: 5 sn'de
+      if (extPassed) resolveWithBest();                                  // kaba: en son çare
+    };
 
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
-        // yeterince hassas VEYA yumuşak süre dolduysa eldekini kullan
-        if (best.coords.accuracy <= GOOD_ACCURACY || softPassed) resolveWithBest();
+        maybeResolve();
       },
       (err) => {
         if (done) return;
         if (best) { resolveWithBest(); return; }  // elde fix varsa onu kullan
         done = true;
-        if (softTimer) clearTimeout(softTimer);
-        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        cleanup();
         const messages = {
           1: "Konum izni kapalı. Adres çubuğundaki 🔒 (site) simgesine dokun → Konum → İzin Ver, sonra tekrar dene.",
           2: "Konum alınamadı. GPS/internet bağlantını kontrol et.",
@@ -881,8 +896,9 @@ function getLocation() {
       },
       { enableHighAccuracy: true, timeout: HARD_TIMEOUT, maximumAge: 30000 }
     );
-    // Yumuşak süre: eldeki en iyi fix'i kullan; fix yoksa beklemeye DEVAM et
-    softTimer = setTimeout(() => { softPassed = true; resolveWithBest(); }, SOFT_WAIT);
+    // Kademeli kabul: 5 sn'de makul fix'i, 12 sn'de (rafine gelmediyse) kaba fix'i kullan
+    softTimer = setTimeout(() => { softPassed = true; maybeResolve(); }, SOFT_WAIT);
+    extTimer  = setTimeout(() => { extPassed = true; maybeResolve(); }, EXT_WAIT);
   });
 }
 
@@ -1098,10 +1114,23 @@ async function fetchAndRank() {
   const geo = within.length ? within : all.slice(0, 3);
 
   _lastGeo = geo;
-  return { geo, withinRadius: within.length > 0, nearestKm: all[0]._km };
+  // Tespit edilen il (uyarı bandı için) — TR başharf büyütme
+  const provRaw = resp.user_province || "";
+  const province = provRaw
+    ? provRaw.replace(/(^|\s)\S/g, c => c.toLocaleUpperCase("tr"))
+    : "";
+  return { geo, withinRadius: within.length > 0, nearestKm: all[0]._km, province };
 }
 
-function showStatusMsg(withinRadius, nearestKm) {
+function showStatusMsg(withinRadius, nearestKm, province) {
+  // Konum kaba (IP tahmini, >10 km) alındıysa il YANLIŞ olabilir — kullanıcıya
+  // hangi ilin gösterildiğini söyle ki fark edip elle il seçebilsin (9 Tem:
+  // masaüstünde ilk fix Kayseri çıkmış, kullanıcı yabancı listeye bakakalmıştı).
+  const acc = _lastLoc && _lastLoc.accuracy;
+  if (acc && acc > 10000 && province) {
+    setStatus(`⚠️ Konumun yaklaşık tespit edildi (±${Math.round(acc / 1000)} km) — ${province} listesi gösteriliyor. İl yanlışsa yukarıdan "İl seçin" ile ilini seç.`, true);
+    return;
+  }
   if (withinRadius) {
     setStatus(`📍 ${RADIUS_KM} km içindeki nöbetçi eczaneler (${_lastGeo.length})`);
   } else {
@@ -1119,8 +1148,8 @@ findBtn.addEventListener("click", async () => {
   listView.classList.remove("hidden");
   setStatus("Konum alınıyor...");
   try {
-    const { geo, withinRadius, nearestKm } = await fetchAndRank();
-    showStatusMsg(withinRadius, nearestKm);
+    const { geo, withinRadius, nearestKm, province } = await fetchAndRank();
+    showStatusMsg(withinRadius, nearestKm, province);
     renderResult(geo[0], geo.slice(1));
   } catch (e) {
     setStatus(e.message, true);
@@ -1153,8 +1182,8 @@ mapBtn.addEventListener("click", async () => {
   mapBtn.disabled = true;
   setStatus("Konum alınıyor...");
   try {
-    const { geo, withinRadius, nearestKm } = await fetchAndRank();
-    showStatusMsg(withinRadius, nearestKm);
+    const { geo, withinRadius, nearestKm, province } = await fetchAndRank();
+    showStatusMsg(withinRadius, nearestKm, province);
     openMapView();
     renderMap();
   } catch (e) {
