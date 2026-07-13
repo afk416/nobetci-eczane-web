@@ -22,7 +22,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date as _date
 
 import requests
 from bs4 import BeautifulSoup
@@ -45,6 +45,9 @@ MAPS_RE = re.compile(r"maps\?q=(-?[\d.]+),(-?[\d.]+)")
 # "03 Haziran 2026 Van'da Bugün Nöbetçi Eczaneler" / "Bartın Bugün Nöbetçi..."
 SECTION_RE = re.compile(r"Bug.n\s+N.bet.i\s+Eczaneler", re.IGNORECASE)
 DATE_PREFIX_RE = re.compile(r"^\d{1,2}\s+\S+\s+\d{4}\s+")
+# "13.07.2026" gibi tarih jetonu — "AD - 13.07.2026" başlığında sağ taraf
+# ilçe DEĞİL tarihtir (edirneeo yeni tasarımı), ilçe olarak yazılmamalı.
+_DATE_TOKEN_RE = re.compile(r"^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$")
 
 # "04 Temmuz 2026 ..." başlık tarihini ayrıştırmak için (ASCII-normalize ay adları)
 _HEADER_DATE_RE = re.compile(r"^(\d{1,2})\s+([^\s\d]+)\s+(\d{4})")
@@ -89,7 +92,8 @@ CHAMBER_SOURCES: dict[int, dict] = {
     13: {"url": "https://www.bitlisecza.org.tr/nobetci-eczaneler",              "coords": True},
     15: {"url": "https://www.burdureo.org.tr/nobetci-eczaneler",               "coords": True},
     21: {"url": "https://www.diyarbakireo.org.tr/nobetci-eczaneler",           "coords": True},
-    22: {"url": "https://www.edirneeo.org.tr/nobetci-eczaneler",               "coords": True},
+    22: {"url": "https://www.edirneeo.org.tr/nobetci-eczaneler",               "coords": True, "post_search": True},  # 13 Tem 2026: yeni tasarım — liste yalnız "ARA" POST'uyla döner
+
     23: {"url": "https://www.elazigeczaciodasi.org.tr/nobetci-eczaneler/elazig", "coords": True},
     26: {"url": "https://www.eskisehireo.org.tr/eskisehir-nobetci-eczaneler/", "coords": True},
     30: {"url": "https://www.vaneczaciodasi.org.tr/nobetci-eczaneler",          "coords": True, "multi": True},  # Hakkari (Van sayfası)
@@ -332,6 +336,31 @@ def _fetch(url: str) -> BeautifulSoup | None:
     return None
 
 
+def _fetch_post(url: str, data: dict) -> BeautifulSoup | None:
+    """_fetch'in POST sürümü: liste yalnız form gönderimiyle dönen OBEN
+    sayfaları için (ör. edirneeo 2026 yeni tasarımı: GET boş iskelet verir,
+    "ARA" formu POST'lanınca eczane listesi gelir)."""
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    headers = {**HEADERS, "Referer": url, "Origin": f"{parts.scheme}://{parts.netloc}"}
+    last_exc: Exception | None = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            r = requests.post(url, data=data, headers=headers, timeout=REQUEST_TIMEOUT)
+            r.raise_for_status()
+            html = r.content.decode(r.apparent_encoding or "utf-8", "replace")
+            try:
+                return BeautifulSoup(html, "lxml")
+            except Exception:
+                return BeautifulSoup(html, "html.parser")
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_BACKOFF * (attempt + 1))
+    logger.warning("chamber POST fetch başarısız %s: %s", url, last_exc)
+    return None
+
+
 def _icon_text(container, *needles: str) -> str | None:
     """class'ında verilen ipuçlarından birini içeren <i>'nin yanındaki metin."""
     for i in container.find_all("i"):
@@ -381,11 +410,15 @@ def _extract_name_district(container) -> tuple[str | None, str | None]:
             txt = txt.replace(small.get_text(" ", strip=True), "").strip()
         up = _norm(txt)
         if "ECZ" in up and len(txt) > 3:
-            # bazı şablonlarda başlık "AD - İLÇE" şeklinde birleşik
+            # bazı şablonlarda başlık "AD - İLÇE" şeklinde birleşik; ama
+            # edirneeo yeni tasarımı "AD - 13.07.2026" (sağ taraf tarih) →
+            # tarih jetonunu ilçe sanma, ilçe fa-arrow-right'tan alınır.
             if " - " in txt:
                 left, right = txt.split(" - ", 1)
                 name = left.strip()
-                district = district or right.strip()
+                right = right.strip()
+                if not _DATE_TOKEN_RE.match(right):
+                    district = district or right
             else:
                 name = txt
             break
@@ -397,9 +430,10 @@ def _extract_name_district(container) -> tuple[str | None, str | None]:
             if "ECZ" in _norm(txt) and len(txt) > 3:
                 name = txt.split(" - ", 1)[0].strip() if " - " in txt else txt
                 break
-    # 2) ilçe: <small>, hand-right ikonu, ya da "İL - İLÇE" strong
+    # 2) ilçe: <small>, ok/hand ikonu, ya da "İL - İLÇE" strong
+    #    (fa-arrow-right: OBEN "ARA" listesinde ilçe bu ikonun yanında)
     if not district:
-        district = _icon_text(container, "hand-right")
+        district = _icon_text(container, "fa-arrow-right", "hand-right", "fa-map-signs")
     if not district:
         for tag in container.find_all(["strong", "p"]):
             t = tag.get_text(" ", strip=True)
@@ -542,6 +576,7 @@ def scrape_chamber(
     plate_code: str,
     multi: bool = False,
     duty_iso: str | None = None,
+    post_search: bool = False,
 ) -> ScrapeResult:
     """Bir oda sayfasından, beklenen ile ait nöbetçi eczaneleri çeker.
 
@@ -555,13 +590,22 @@ def scrape_chamber(
     uyuşmuyorsa (site farklı günün listesini gösteriyor) success=False
     döner ve hiçbir şey yazılmaz (yanlış-gün koruması). Tarihsiz
     sayfalarda doğrulama atlanır.
+
+    post_search=True ise (ör. edirneeo 2026 yeni tasarımı) liste GET ile
+    boş gelir; "ARA" formu POST'lanarak (tarih1/tarih2=duty_iso, ilce=boş)
+    tüm ilçelerin nöbetçileri çekilir. POST istenen tarihi zaten döndürdüğü
+    için yanlış-gün doğrulaması atlanır.
     """
     started = time.time()
-    soup = _fetch(url)
+    if post_search:
+        d = duty_iso or _date.today().isoformat()
+        soup = _fetch_post(url, {"tarih1": d, "tarih2": d, "ilce": "", "gnr": "ARA"})
+    else:
+        soup = _fetch(url)
     if soup is None:
         return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
 
-    if duty_iso:
+    if duty_iso and not post_search:
         page_date = _page_duty_date(soup)
         if page_date and page_date != duty_iso:
             logger.warning(

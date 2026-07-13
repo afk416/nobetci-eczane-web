@@ -181,7 +181,7 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
                 info = chamber.CHAMBER_SOURCES[plate]
                 res = chamber.scrape_chamber(
                     info["url"], city, str(plate), multi=info.get("multi", False),
-                    duty_iso=duty_iso,
+                    duty_iso=duty_iso, post_search=info.get("post_search", False),
                 )
         except Exception:
             logger.exception("[%d/%d] oda %s (%d) HATA", i, len(targets), city, plate)
@@ -241,7 +241,7 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
         try:
             res = chamber.scrape_chamber(
                 info["url"], city, str(plate), multi=info.get("multi", False),
-                duty_iso=duty_iso,
+                duty_iso=duty_iso, post_search=info.get("post_search", False),
             )
         except Exception:
             logger.exception("oda %s (%d) HATA", city, plate)
