@@ -18,6 +18,7 @@ Kullanım:
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -136,7 +137,10 @@ FALLBACK_SOURCES: dict[int, dict] = {
     # Kırşehir'e sürekli 0 döndürdüğü için (3 gün verisiz kaldı) oda tek kaynak.
     40: {"url": "https://www.aksarayeo.org.tr/nobetci-eczaneler",          "coords": True, "lat_min": 39.02},  # Kırşehir
     45: {"url": "https://www.manisaeczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Manisa
-    46: {"url": "https://www.kahramanmaraseo.org.tr/nobetci-eczaneler",    "coords": True},  # Kahramanmaraş
+    # 46 Kahramanmaraş → ODA_API_SOURCES'a taşındı (belediye_json, 13 Ağu 2026):
+    #   oda+OBEN yalnız bu il için IP'mizi beyaz listeye aldı + bize özel JSON ucu
+    #   (nobet-belediye) verdi → TAM 18 eczane koordinatlı. TİTCK yedeği (yarın +
+    #   uç çökerse) korunur çünkü 46 CHAMBER_PLATES'te değil → titck_plates'te kalır.
     47: {"url": "https://www.mardineczaciodasi.org.tr/nobetci-eczaneler",  "coords": True},  # Mardin
     48: {"url": "https://www.muglaeczaciodasi.org.tr/nobetci-eczaneler",   "coords": True},  # Muğla
     50: {"url": "https://www.nevsehireo.org.tr/nobetci-eczaneler",         "coords": True},  # Nevşehir
@@ -681,6 +685,7 @@ ODA_API_SOURCES: dict[int, dict] = {
     28: {"type": "giresun_json", "url": "https://www.giresuneczaciodasi.org.tr/api/pharmacies", "coords": True},  # Giresun
     34: {"type": "istanbul_json", "il": "İstanbul", "coords": True},  # İstanbul (token'lı POST)
     77: {"type": "istanbul_json", "il": "Yalova",   "coords": True},  # Yalova (İstanbul odası API'si kapsıyor)
+    46: {"type": "belediye_json", "url": "https://www.kahramanmaraseo.org.tr/nobet-belediye", "coords": True},  # K.Maraş (13 Ağu: oda+OBEN bize özel açtı, IP beyaz listede; TAM 18 eczane koordinatlı)
     42: {"type": "konya_html",   "coords": True},  # Konya (statik tablo, il geneli)
 }
 
@@ -726,6 +731,54 @@ def _scrape_giresun_json(url: str, plate_code: str, duty_iso: str) -> ScrapeResu
             "name": name,
             "address": (x.get("address") or "").strip(),
             "phone": _normalize_phone(x.get("phone") or ""),
+            "lat": lat, "lng": lng,
+        })
+    return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
+
+
+def _scrape_belediye_json(url: str, plate_code: str, duty_iso: str) -> ScrapeResult:
+    """K.Maraş Eczacı Odası'nın 'nobet-belediye' paylaşım JSON ucu (13 Ağu 2026:
+    oda + OBEN yalnız bu il için IP'mizi beyaz listeye aldı, bize özel açıldı).
+
+    Temiz JSON döner (BOM + baştaki boşluklarla): ilce/eczane/tel/adres/
+    harita_enlem/harita_boylam/baslangic/bitis/bilgi. Oda HTML'inden DAHA TAM
+    ve koordinatlı (18 vs TİTCK 15). Tarih parametresi YOK → yalnız o an aktif
+    nöbeti verir; kayıtların 'baslangic' tarihi istenen günle uyuşmazsa o kayıt
+    atlanır (yanlış-gün koruması; 08:30 sınırıyla doğal uyumlu). Yarın verisini
+    TİTCK sağlar (bu il titck_plates'te kalır)."""
+    started = time.time()
+    try:
+        r = requests.get(url, headers=_API_HEADERS, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        text = r.text
+        i, j = text.find("["), text.rfind("]")
+        data = json.loads(text[i:j + 1]) if 0 <= i < j else []
+    except Exception as exc:
+        logger.warning("belediye-json başarısız %s: %s", url, exc)
+        return ScrapeResult(False, plate_code, took=round(time.time() - started, 1))
+
+    pharmacies: list[dict] = []
+    seen: set[str] = set()
+    for x in data if isinstance(data, list) else []:
+        bl = (x.get("baslangic") or "")[:10]  # 'YYYY-MM-DD'
+        if duty_iso and bl and bl != duty_iso:
+            continue  # başka günün nöbeti — yazma
+        name = (x.get("eczane") or "").strip()
+        if "ECZ" not in _norm(name):
+            continue
+        try:
+            lat = float(x.get("harita_enlem")); lng = float(x.get("harita_boylam"))
+        except (TypeError, ValueError):
+            lat = lng = None
+        key = _norm(name) + str(lat)[:8]
+        if key in seen:
+            continue
+        seen.add(key)
+        pharmacies.append({
+            "district": (x.get("ilce") or "").strip().title(),
+            "name": name,
+            "address": (x.get("adres") or "").strip(),
+            "phone": _normalize_phone(x.get("tel") or ""),
             "lat": lat, "lng": lng,
         })
     return ScrapeResult(True, plate_code, pharmacies=pharmacies, took=round(time.time() - started, 1))
@@ -912,6 +965,8 @@ def scrape_oda_api(plate_code: int, info: dict, duty_iso: str) -> ScrapeResult:
         return _scrape_istanbul_json(info["il"], str(plate_code))
     if t == "konya_html":
         return _scrape_konya_html(str(plate_code))
+    if t == "belediye_json":
+        return _scrape_belediye_json(info["url"], str(plate_code), duty_iso)
     return ScrapeResult(False, str(plate_code))
 
 
