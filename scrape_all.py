@@ -60,6 +60,18 @@ CHAMBER_WITH_TITCK = {3, 8, 9, 15, 27, 35, 65, 73, 74}  # 43 Kütahya çıkarıl
 # (30 Haz 2026: Kahramanmaraş oda 1 eczane döndü, TİTCK'in 18'ini blokladı.)
 MIN_ODA_TRUST = 3
 
+# Taramalarda EN ÖNCE işlenecek il(ler). Kullanıcı isteği (9 Eki 2026):
+# Kahramanmaraş (46) her fazda ilk sırada çekilsin → o il, timeout/yavaşlık
+# tüm turu vursa bile en güncel veriye ilk ulaşan olur.
+PRIORITY_PLATES = [46]
+
+
+def _prioritize(plates: list[int]) -> list[int]:
+    """PRIORITY_PLATES'teki plakaları (varsa) listenin başına taşır; geri kalanın
+    sırası korunur. Faz fonksiyonlarının hepsi bunu kullanır."""
+    pri = [p for p in PRIORITY_PLATES if p in plates]
+    return pri + [p for p in plates if p not in PRIORITY_PLATES]
+
 
 def active_duty_dates() -> list[str]:
     """e-Devlet formatında (dd/mm/YYYY) aktif nöbet günü + ertesi gün.
@@ -97,7 +109,7 @@ def scrape_for_date(
     done = set() if force else store.completed_plates(duty_iso)
     if always_include:
         done -= set(always_include)
-    pending = [p for p in plates if p not in done]
+    pending = _prioritize([p for p in plates if p not in done])
 
     logger.info(
         "Nöbet günü %s (%s): %d il bekliyor, %d atlandı",
@@ -166,7 +178,7 @@ def scrape_chambers(duty_iso: str, plates: list[int], force: bool) -> tuple[int,
     ile geocode edilir (sonuç önbelleğe alınır).
     """
     done = set() if force else store.completed_plates(duty_iso, source="oda")
-    targets = [p for p in plates if p in CHAMBER_PLATES and p not in done]
+    targets = _prioritize([p for p in plates if p in CHAMBER_PLATES and p not in done])
     logger.info("Oda kaynakları (%s): %d il bekliyor, %d atlandı",
                 duty_iso, len(targets), len(CHAMBER_PLATES & set(plates)) - len(targets))
 
@@ -228,7 +240,7 @@ def scrape_fallbacks(duty_iso: str, plates: list[int], force: bool = False) -> t
     mevcut dolu veriyi EZMEZ (kayıt yapılmaz).
     """
     done = set() if force else store.completed_plates(duty_iso, source="oda")
-    targets = [p for p in plates if p in chamber.FALLBACK_SOURCES and p not in done]
+    targets = _prioritize([p for p in plates if p in chamber.FALLBACK_SOURCES and p not in done])
     if not targets:
         return 0, 0
 
@@ -289,7 +301,7 @@ def scrape_api_sources(duty_iso: str, plates: list[int], force: bool = False) ->
     iller atlanır.
     """
     done = set() if force else store.completed_plates(duty_iso, source="oda")
-    targets = [p for p in plates if p in chamber.ODA_API_SOURCES and p not in done]
+    targets = _prioritize([p for p in plates if p in chamber.ODA_API_SOURCES and p not in done])
     if not targets:
         return 0, 0
 

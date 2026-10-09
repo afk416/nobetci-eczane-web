@@ -321,6 +321,16 @@ class ScrapeResult:
     took: float = 0.0
 
 
+def _is_client_error(exc: Exception) -> bool:
+    """4xx (ör. 403 IP-bloğu, 404) tekrar denemeyle DEĞİŞMEZ → boşuna bekleme.
+    Birçok oda sitesi sunucu IP'mize kalıcı 403 veriyor (OBEN bloğu, kaldırılmadı);
+    her birini 3 kez backoff'la denemek taramayı dakikalarca yavaşlatıp timeout'a
+    sokuyordu. 4xx'te HEMEN vazgeç → TİTCK o ili devralır (oda-öncelik yedeği)."""
+    resp = getattr(exc, "response", None)
+    sc = getattr(resp, "status_code", None)
+    return sc is not None and 400 <= sc < 500
+
+
 def _fetch(url: str) -> BeautifulSoup | None:
     last_exc: Exception | None = None
     for attempt in range(MAX_RETRIES):
@@ -334,6 +344,8 @@ def _fetch(url: str) -> BeautifulSoup | None:
                 return BeautifulSoup(html, "html.parser")
         except requests.RequestException as exc:
             last_exc = exc
+            if _is_client_error(exc):
+                break  # 403/4xx — tekrar deneme, TİTCK devralsın
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_BACKOFF * (attempt + 1))
     logger.warning("chamber fetch başarısız %s: %s", url, last_exc)
@@ -359,6 +371,8 @@ def _fetch_post(url: str, data: dict) -> BeautifulSoup | None:
                 return BeautifulSoup(html, "html.parser")
         except requests.RequestException as exc:
             last_exc = exc
+            if _is_client_error(exc):
+                break  # 403/4xx — tekrar deneme, TİTCK devralsın
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_BACKOFF * (attempt + 1))
     logger.warning("chamber POST fetch başarısız %s: %s", url, last_exc)
